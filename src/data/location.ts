@@ -9,7 +9,7 @@ export type Location = {
 
 export const Locations: Location[] =[
 
-    {name : "Thompson", isOpen : true, id : "main-musalla",
+    {name : "Thompson Library", isOpen : true, id : "main-musalla",
          floor : "Ground Floor", roomNum: "057"}, 
 
     {name : "18th Ave Library", isOpen : true, id : "18th-musalla-men",
