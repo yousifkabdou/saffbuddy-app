@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import { useState } from "react";
 import { Button, StyleSheet, Text, TextInput, View } from "react-native";
+import {router} from "expo-router";
 
 export default function login(){
     const [email, setEmail] = useState("");
@@ -25,6 +26,7 @@ const handleVerify = async() => {
     return
   }
   console.log(data.user?.id);
+  router.replace("/");
 }
 
  
