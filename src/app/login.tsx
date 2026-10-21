@@ -1,7 +1,7 @@
 import { supabase } from "@/lib/supabase";
+import { router } from "expo-router";
 import { useState } from "react";
 import { Button, StyleSheet, Text, TextInput, View } from "react-native";
-import {router} from "expo-router";
 
 export default function login(){
     const [email, setEmail] = useState("");
@@ -25,7 +25,7 @@ const handleVerify = async() => {
   const {data, error} = 
   await supabase.auth.verifyOtp({email, token:code, type:"email"});
   if (error){
-    setVerifyError(error.message);
+    setVerifyError("Enter a valid 6-digit code");
     return
   }
   setVerifyError("");
