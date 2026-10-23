@@ -1,5 +1,8 @@
 import { StyleSheet, View } from "react-native";
-import MapView from "react-native-maps";
+import MapView  from "react-native-maps";
+import {Marker}  from "react-native-maps";
+import {Locations} from "@/data/location";
+
 
 
 
@@ -15,6 +18,12 @@ export default function Index() {
         latitudeDelta: 0.013,
         longitudeDelta: 0.013,
       }}>
+      {Locations.map((room) => ( 
+      <Marker key = {room.id} coordinate = 
+      {{latitude: room.latitude, longitude: room.longitude }}
+      title = {room.name} 
+      description = {`Floor: ${room.floor}. Room Number: ${room.roomNum}`}/>
+    ))}
     
       </MapView>
     </View>
