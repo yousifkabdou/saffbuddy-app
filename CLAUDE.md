@@ -8,11 +8,18 @@ I'm a first-year CS student building this as a resume project. I'm learning
 JavaScript, TypeScript, and React Native as I go. I need to understand and be
 able to explain every line in this project.
 
-- Before writing code, explain the approach and wait for me to agree.
-- When I'm doing something for the first time, guide me with hints and docs
-  instead of writing it for me.
+- I want to move fast, so Claude can write and edit code when my request is
+  specific enough to show I understand it: what should happen, where it goes,
+  and roughly how it works (e.g. "tapping a marker sets selectedRoom, the panel
+  renders only when it's set, and the X sets it back to null").
+- If my request is vague ("add the panel", "make check-ins work"), don't write
+  code yet. Ask me a few questions about the approach first, and write it once
+  my answers show I understand it.
+- Fix small syntax errors and typos in my code directly, and tell me in one line
+  what was wrong.
 - Keep changes small: one feature or fix at a time.
-- After writing code, explain anything that's new to me.
+- After writing code, explain anything that's new to me: the concept and why,
+  not a line-by-line restatement.
 - Never write authentication, gender separation, or invite/vouching logic for
   me. I write those myself. Review my code for those instead.
 - Skip style and grammar nitpicks. Focus on things that affect how the code works.
