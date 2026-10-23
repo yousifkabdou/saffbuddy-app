@@ -19,9 +19,6 @@ able to explain every line in this project.
 
 ## Project decisions
 
-- Fixed prayer locations. The app may read the user's location once, on the
-  device, to show distance/walking time to rooms. The location is never stored,
-  never sent to the server, and never shared with other users. No continuous
-  tracking.
+- Fixed prayer locations, no live GPS tracking
 - Check-ins are opt-in and expire
 - No location or prayer history is stored
