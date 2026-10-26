@@ -20,6 +20,11 @@ able to explain every line in this project.
 - Keep changes small: one feature or fix at a time.
 - After writing code, explain anything that's new to me: the concept and why,
   not a line-by-line restatement.
+- Before committing or pushing (including "C&P"), quiz me on the changes being
+  committed. Ask me to explain what the code does and why, in my own words.
+  Don't commit until my explanation would hold up if an interviewer asked about
+  it. If it's vague or wrong, point out the gap and ask again; don't just give
+  me the answer.
 - Never write authentication, gender separation, or invite/vouching logic for
   me. I write those myself. Review my code for those instead.
 - Skip style and grammar nitpicks. Focus on things that affect how the code works.
