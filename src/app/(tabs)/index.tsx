@@ -1,7 +1,7 @@
 import { Location, Locations } from "@/data/location";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { StyleSheet, View, Text, Pressable, Alert, Linking, Platform } from "react-native";
-import MapView, { Marker } from "react-native-maps";
+import MapView, { Marker, MapMarker } from "react-native-maps";
 import { useBottomTabBarHeight } from "expo-router/js-tabs";
 
 // Opens walking directions to a room in the user's map app.
@@ -25,6 +25,16 @@ function openDirections(room: Location) {
 export default function Index() {
   const [selectedRoom, setSelectedRoom] = useState<null | Location>(null);
   const tabBarHeight = useBottomTabBarHeight(); // the tab bar floats over the screen, so the panel needs room for it
+  const markerRefs = useRef<Record<string, MapMarker | null>>({}); // each room's marker, by room id
+
+  // Close the panel and deselect the marker right away. Otherwise Apple Maps keeps
+  // it selected for ~1s and ignores taps on it, so it can't be reopened.
+  const closePanel = () => {
+    if (selectedRoom) {
+      markerRefs.current[selectedRoom.id]?.hideCallout();
+    }
+    setSelectedRoom(null);
+  };
   return (
 
     <View style={styles.container}>
@@ -34,16 +44,24 @@ export default function Index() {
         longitude: -83.013325,
         latitudeDelta: 0.013,
         longitudeDelta: 0.013,
+      }}
+      onPress={(event) => {
+        // Tapping a marker can also reach the map; only close for taps on empty map.
+        if (event.nativeEvent.action !== "marker-press") {
+          closePanel();
+        }
       }}>
       {Locations.map((room) => (
-      <Marker key = {room.id} coordinate =
+      <Marker key = {room.id}
+      ref={(marker) => { markerRefs.current[room.id] = marker; }}
+      coordinate =
       {{latitude: room.latitude, longitude: room.longitude }}
       onPress={ () => setSelectedRoom(room)}/>
     ))}
       </MapView>
       {selectedRoom &&
       <View style={[styles.panel, { paddingBottom: tabBarHeight }]}>
-        <Pressable style={styles.closeButton} onPress={() => setSelectedRoom(null)}>
+        <Pressable style={styles.closeButton} onPress={closePanel}>
           <Text style={styles.closeText}>✕</Text>
         </Pressable>
 
