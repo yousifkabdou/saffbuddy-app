@@ -32,8 +32,9 @@ able to explain every line in this project.
 ## Project decisions
 
 - Fixed prayer locations, no live GPS tracking
-- Check-ins are opt-in and expire
-- No location or prayer history is stored
+- Requests are opt-in and expire (there is no separate check-in concept)
+- No location or prayer history is stored; the only exception is anonymous
+  per-room, per-day congregation counts (see docs/adr/0001)
 
 ## Agent skills
 

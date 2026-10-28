@@ -1,56 +1,68 @@
-# Welcome to your Expo app 👋
+# SaffBuddy
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Find others on campus to pray in congregation with.
 
-## Get started
+SaffBuddy is a mobile app for Ohio State students. It shows the campus prayer rooms on a map. Students can post a **request** to pray at a room at a chosen time, and others can join it, so nobody waits around or prays alone without knowing whether anyone is coming. *Saff* is the Arabic word for the row worshippers stand in during congregational prayer.
 
-1. Install dependencies
+<p align="center">
+  <img src="docs/screenshots/map.png" width="260" alt="Campus map with prayer room markers" />
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/room-panel.png" width="260" alt="Room panel for 18th Ave Library with directions and Request buttons" />
+</p>
 
+> **Status:** in active development. Login, the campus map and room details work on iOS. Prayer requests are designed and being built next, with a TestFlight beta planned.
+
+## Features
+
+**Working now**
+- Passwordless login: an email plus a 6-digit one-time code
+- Accounts limited to `@osu.edu` emails, enforced by the database rather than by the app
+- Campus map with a marker for each prayer room
+- Room panel with floor, room number, description, and walking directions handed off to Apple Maps or Google Maps
+
+**In progress**
+- Profiles (first name and gender)
+- Prayer requests: post, join, leave and cancel, with live updates and automatic expiry
+- Push notifications (planned for after the beta)
+
+## Privacy by design
+
+- **No GPS tracking.** Prayer rooms are fixed places. Directions open your own maps app, so SaffBuddy never reads your location.
+- **No history.** Requests are deleted when they expire or are cancelled.
+- **Anonymous until you join.** Before joining, people see only the start time and how many have joined.
+- **Rules live in the database.** OSU-only sign-up is already enforced there, and gender-separated visibility will be too, through Postgres row-level security. Because of this, a modified app can't get around them.
+- **Anonymous metrics only.** Usage is counted per room per day, with no user IDs or times ([ADR 0001](docs/adr/0001-aggregate-congregation-counts.md)).
+
+## Tech stack
+
+| | |
+|---|---|
+| App | React Native 0.88, Expo SDK 58, TypeScript, Expo Router |
+| Map | react-native-maps (Apple Maps on iOS, Google Maps on Android) |
+| Backend | Supabase: Postgres, Auth, row-level security |
+| Email | Resend (custom SMTP for login codes) |
+
+## Project docs
+
+- [GLOSSARY.md](GLOSSARY.md): the domain language (requests, joiners, rooms, etc.)
+- [docs/adr/](docs/adr/): architecture decision records
+
+## Running locally
+
+You'll need Node.js, the Expo Go app on your phone, and a Supabase project.
+
+1. Install dependencies:
    ```bash
    npm install
    ```
-
-2. Start the app
-
+2. Create `.env.local` with your Supabase project's URL and publishable key:
+   ```
+   EXPO_PUBLIC_SUPABASE_URL=...
+   EXPO_PUBLIC_SUPABASE_KEY=...
+   ```
+3. In the Supabase SQL editor, run [supabase/verify_osu_email.sql](supabase/verify_osu_email.sql). Then enable it as a "Before User Created" auth hook.
+4. Start the dev server and scan the QR code with Expo Go:
    ```bash
    npx expo start
    ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
-```
-
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
-
-### Other setup steps
-
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+   If you're on a network that blocks device-to-laptop connections (such as campus Wi-Fi), use `npx expo start --tunnel`.
