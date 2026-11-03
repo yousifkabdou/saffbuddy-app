@@ -4,56 +4,70 @@ import { StyleSheet, View } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { supabase } from "@/lib/supabase"; //My login source
 import { useEffect, useState } from "react"; //useEffect executes a code once after the screen is drawn, useState stores a value that survives redraws
-import {Session} from "@supabase/supabase-js";
+import { Session } from "@supabase/supabase-js";
 export default function TabsLayout() {
 
   const [session, setSession] = useState<Session | null>(null); //current session info can only be Session or null, setSession to change it
   const [loading, setLoading] = useState(true); //Loading status set as true
+  const [hasProfile, setHasProfile] = useState(false);
 
-  const checkSession = async ()=>{
-  const {data, error} = await supabase.auth.getSession(); //returns a data and error 
-  if (error){ //if error is null then its false, if error containts an object (when theres an error) it is true
-    console.log(data.session);
-    setLoading(false);
-    console.log(error.message);
-    return 
-}
-    setLoading(false);
+  const checkSession = async () => {
+    const { data, error } = await supabase.auth.getSession(); //returns a data and error 
+    if (error) { //if error is null then its false, if error containts an object (when theres an error) it is true
+      console.log(data.session);
+      setLoading(false);
+      console.log(error.message);
+      return
+    }
+    if (!data.session){
+      setLoading(false);
+      return;
+    }
     setSession(data.session);
+
+    const userID = data.session?.user.id;
+
+    const { data: profileData } = await supabase.from("profiles").select("id").eq("id", userID).maybeSingle();
+
+    setHasProfile(profileData !== null);
+    setLoading(false);
   }
 
 
- useEffect( () => { //checking the current session
-  checkSession();
-  const {data: {subscription}} = supabase.auth.onAuthStateChange((_event, newSession) => {setSession(newSession)});
-  
-  return () => {
-    subscription.unsubscribe();
-  }
+  useEffect(() => { //checking the current session
+    checkSession();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => { setSession(newSession) });
 
-}, []);
+    return () => {
+      subscription.unsubscribe();
+    }
 
-  if (loading){
+  }, []);
+
+  if (loading) {
     return null
   }
-  else if (!session){
-    return <Redirect href="/login"/>
+  else if (!session) {
+    return <Redirect href="/login" />
 
   }
-  else{
+  else if (!hasProfile) {
+    return <Redirect href="/setup" />
+  }
+  else {
 
-  return <Tabs screenOptions={{
+    return <Tabs screenOptions={{
       tabBarStyle: styles.tabBar,
       tabBarShowLabel: false,
     }}>
-    <Tabs.Screen name = "index" options={{
-      title: "Home",
-      tabBarIcon: ({ focused }) => <TabCircle icon="home" focused={focused} />,
-    }} />
-    <Tabs.Screen name = "times" options = {{
-      title:"Prayer Times",
-      tabBarIcon: ({ focused }) => <TabCircle icon="time" focused={focused} />,
-    }} />
+      <Tabs.Screen name="index" options={{
+        title: "Home",
+        tabBarIcon: ({ focused }) => <TabCircle icon="home" focused={focused} />,
+      }} />
+      <Tabs.Screen name="times" options={{
+        title: "Prayer Times",
+        tabBarIcon: ({ focused }) => <TabCircle icon="time" focused={focused} />,
+      }} />
     </Tabs>;
 
   }
