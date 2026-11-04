@@ -73,7 +73,10 @@ export default function Index() {
       ref={(marker) => { markerRefs.current[room.id] = marker; }}
       coordinate =
       {{latitude: room.latitude, longitude: room.longitude }}
-      onPress={ () => setSelectedRoom(room)}/>
+      onPress={ () => setSelectedRoom(room)}
+      // After a map tap closes the panel, Apple Maps selects the next marker
+      // without firing onPress, so open the panel on select too.
+      onSelect={ () => setSelectedRoom(room)}/>
     ))}
       </MapView>
       {selectedRoom &&
