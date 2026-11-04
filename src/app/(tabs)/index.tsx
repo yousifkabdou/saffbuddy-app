@@ -1,12 +1,13 @@
-import { Location, Locations } from "@/data/location";
-import { useRef, useState } from "react";
+import { Room } from "@/data/room";
+import { supabase } from "@/lib/supabase";
+import { useEffect, useRef, useState } from "react";
 import { StyleSheet, View, Text, Pressable, Alert, Linking, Platform } from "react-native";
 import MapView, { Marker, MapMarker } from "react-native-maps";
 import { useBottomTabBarHeight } from "expo-router/js-tabs";
 
 // Opens walking directions to a room in the user's map app.
 // iOS asks Apple Maps or Google Maps; Android goes straight to Google Maps.
-function openDirections(room: Location) {
+function openDirections(room: Room) {
   const destination = `${room.latitude},${room.longitude}`;
   const appleUrl = `https://maps.apple.com/?daddr=${destination}&dirflg=w`;
   const googleUrl = `https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=walking`;
@@ -23,7 +24,8 @@ function openDirections(room: Location) {
 }
 
 export default function Index() {
-  const [selectedRoom, setSelectedRoom] = useState<null | Location>(null);
+  const [rooms, setRooms] = useState<Room[]>([]); // empty until Supabase answers, so the map shows with no markers at first
+  const [selectedRoom, setSelectedRoom] = useState<null | Room>(null);
   const tabBarHeight = useBottomTabBarHeight(); // the tab bar floats over the screen, so the panel needs room for it
   const markerRefs = useRef<Record<string, MapMarker | null>>({}); // each room's marker, by room id
 
@@ -35,6 +37,21 @@ export default function Index() {
     }
     setSelectedRoom(null);
   };
+
+  // Load the rooms once when the map opens. RLS decides which rooms come back
+  // (shared rooms plus the viewer's own gender's rooms).
+  useEffect(() => {
+    const loadRooms = async () => {
+      const { data, error } = await supabase.from("rooms").select("*");
+      if (error) {
+        console.log(error.message);
+        return;
+      }
+      setRooms(data);
+    };
+    loadRooms();
+  }, []);
+
   return (
 
     <View style={styles.container}>
@@ -51,7 +68,7 @@ export default function Index() {
           closePanel();
         }
       }}>
-      {Locations.map((room) => (
+      {rooms.map((room) => (
       <Marker key = {room.id}
       ref={(marker) => { markerRefs.current[room.id] = marker; }}
       coordinate =
@@ -69,11 +86,11 @@ export default function Index() {
           <View style={styles.logo}>
             <Text style={styles.logoText}>🕌</Text>
           </View>
-          <Text style={styles.name}>{selectedRoom.name}</Text>
+          <Text style={styles.name}>{selectedRoom.building}</Text>
         </View>
 
         <Text style={styles.description}>
-          { `${selectedRoom.floor}, Room ${selectedRoom.roomNum}`}
+          { `${selectedRoom.floor}, Room ${selectedRoom.room_num}`}
         </Text>
 
         <View style={styles.actions}>
