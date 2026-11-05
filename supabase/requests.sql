@@ -32,19 +32,11 @@ for delete
 to authenticated
 using (requester = (auth.uid()));
 
-create or replace function public.my_request_id()
-returns uuid
-language sql
-security definer
-set search_path = ''
-as $$
-  select id from public.requests where requester = auth.uid()
-  $$;
-
-  revoke execute on function public.my_request_id() from public, anon;
-  grant execute on function public.my_request_id() to authenticated;
-
 /* No update: to change a request, cancel it and post a new one */
+
+/* No expiry yet: a scheduled job will delete requests 15 minutes after their
+   start time and add them to the per-room daily tally (docs/adr/0001), so no
+   request history is kept. Until then, requests stay until cancelled. */
 
 /* Returns the caller's own request id (or null), so the app can mark it "Yours"
    without being able to read anyone's requester column */

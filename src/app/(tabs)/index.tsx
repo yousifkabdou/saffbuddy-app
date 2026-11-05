@@ -1,9 +1,13 @@
 import { Room } from "@/data/room";
 import { supabase } from "@/lib/supabase";
-import { useEffect, useRef, useState } from "react";
-import { StyleSheet, View, Text, Pressable, Alert, Linking, Platform } from "react-native";
-import MapView, { Marker, MapMarker } from "react-native-maps";
 import { useBottomTabBarHeight } from "expo-router/js-tabs";
+import { useEffect, useRef, useState } from "react";
+import { Alert, Linking, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import MapView, { MapMarker, Marker } from "react-native-maps";
+
+// Start time choices, in minutes from now. The requests insert policy only
+// accepts start times up to 60 minutes ahead, so keep these in sync.
+const START_OFFSETS = [0, 15, 30, 45, 60];
 
 // Opens walking directions to a room in the user's map app.
 // iOS asks Apple Maps or Google Maps; Android goes straight to Google Maps.
@@ -28,6 +32,13 @@ export default function Index() {
   const [selectedRoom, setSelectedRoom] = useState<null | Room>(null);
   const tabBarHeight = useBottomTabBarHeight(); // the tab bar floats over the screen, so the panel needs room for it
   const markerRefs = useRef<Record<string, MapMarker | null>>({}); // each room's marker, by room id
+  const [timePickerOpen, setTimePickerOpen] = useState(false); // true = time buttons replace the Request button
+
+  // Open a room's panel with the picker closed, so it doesn't carry over from the last room.
+  const openPanel = (room: Room) => {
+    setSelectedRoom(room);
+    setTimePickerOpen(false);
+  };
 
   // Close the panel and deselect the marker right away. Otherwise Apple Maps keeps
   // it selected for ~1s and ignores taps on it, so it can't be reopened.
@@ -36,6 +47,21 @@ export default function Index() {
       markerRefs.current[selectedRoom.id]?.hideCallout();
     }
     setSelectedRoom(null);
+    setTimePickerOpen(false);
+  };
+
+  // Called with one of START_OFFSETS when a time button is tapped.
+  const postRequest = async (minutes: number) => {
+    setTimePickerOpen(false);
+    const {data} = await supabase.auth.getSession();
+    const userId = data.session?.user.id;
+    const roomID = selectedRoom?.id;
+    const {data: userGender} = await supabase.from('profiles').select('gender').eq('id', userId).maybeSingle();
+    const {error} = await supabase.from("requests").insert({room_id: roomID, requester: userId, gender: userGender?.gender, start_time: new Date(Date.now() + minutes * 60 * 1000).toISOString()})
+    
+    if (error){
+      console.log(error.message);
+    }
   };
 
   // Load the rooms once when the map opens. RLS decides which rooms come back
@@ -73,10 +99,10 @@ export default function Index() {
       ref={(marker) => { markerRefs.current[room.id] = marker; }}
       coordinate =
       {{latitude: room.latitude, longitude: room.longitude }}
-      onPress={ () => setSelectedRoom(room)}
+      onPress={ () => openPanel(room)}
       // After a map tap closes the panel, Apple Maps selects the next marker
       // without firing onPress, so open the panel on select too.
-      onSelect={ () => setSelectedRoom(room)}/>
+      onSelect={ () => openPanel(room)}/>
     ))}
       </MapView>
       {selectedRoom &&
@@ -96,14 +122,27 @@ export default function Index() {
           { `${selectedRoom.floor}, Room ${selectedRoom.room_num}`}
         </Text>
 
+        {timePickerOpen ?
+        <View style={styles.actions}>
+          <Text style={styles.whenText}>When?</Text>
+          {START_OFFSETS.map((minutes) => (
+            <Pressable key={minutes} style={styles.timeButton} onPress={() => postRequest(minutes)}>
+              <Text style={styles.timeText}>{minutes === 0 ? "Now" : minutes}</Text>
+            </Pressable>
+          ))}
+          <Pressable style={styles.pickerClose} onPress={() => setTimePickerOpen(false)}>
+            <Text style={styles.closeText}>✕</Text>
+          </Pressable>
+        </View>
+        :
         <View style={styles.actions}>
           <Pressable style={styles.directionsButton} onPress={() => openDirections(selectedRoom)}>
             <Text style={styles.directionsText}>➤</Text>
           </Pressable>
-          <Pressable style={styles.requestButton} onPress={() => Alert.alert("Coming soon", "Prayer buddy requests aren't built yet.")}>
+          <Pressable style={styles.requestButton} onPress={() => setTimePickerOpen(true)}>
             <Text style={styles.requestText}>Request</Text>
           </Pressable>
-        </View>
+        </View>}
       </View>}
     </View>
   );
@@ -208,5 +247,27 @@ const styles = StyleSheet.create({
     color: "white",
     fontSize: 18,
     fontWeight: "bold",
+  },
+  whenText: {
+    fontSize: 16,
+    fontWeight: "bold",
+    marginRight: 8,
+  },
+  timeButton: {
+    flex: 1,                // the five buttons share the row equally
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: "black",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 6,
+  },
+  timeText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+  pickerClose: {
+    padding: 8,
   },
 });
