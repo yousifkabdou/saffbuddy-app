@@ -1,3 +1,4 @@
+import { PrayerRequest } from "@/data/request";
 import { Room } from "@/data/room";
 import { supabase } from "@/lib/supabase";
 import { useBottomTabBarHeight } from "expo-router/js-tabs";
@@ -33,11 +34,17 @@ export default function Index() {
   const tabBarHeight = useBottomTabBarHeight(); // the tab bar floats over the screen, so the panel needs room for it
   const markerRefs = useRef<Record<string, MapMarker | null>>({}); // each room's marker, by room id
   const [timePickerOpen, setTimePickerOpen] = useState(false); // true = time buttons replace the Request button
+  const [requests, setRequests] = useState<PrayerRequest[]>([]); // every request RLS lets us see, all rooms
+  const [requestsOpen, setRequestsOpen] = useState(false); // true = the panel shows this room's request list
 
-  // Open a room's panel with the picker closed, so it doesn't carry over from the last room.
+  // Only the selected room's requests. Already sorted by start time (see loadRequests).
+  const roomRequests = selectedRoom ? requests.filter((r) => r.room_id === selectedRoom.id) : [];
+
+  // Open a room's panel with the picker and list closed, so they don't carry over from the last room.
   const openPanel = (room: Room) => {
     setSelectedRoom(room);
     setTimePickerOpen(false);
+    setRequestsOpen(false);
   };
 
   // Close the panel and deselect the marker right away. Otherwise Apple Maps keeps
@@ -48,6 +55,18 @@ export default function Index() {
     }
     setSelectedRoom(null);
     setTimePickerOpen(false);
+    setRequestsOpen(false);
+  };
+
+  // Load every visible request (RLS: only the viewer's gender), earliest first.
+  // Name the columns: requester is hidden by the column grant, so "*" would fail.
+  const loadRequests = async () => {
+    const { data, error } = await supabase.from("requests").select("id, room_id, start_time").order("start_time");
+    if (error) {
+      console.log(error.message);
+      return;
+    }
+    setRequests(data);
   };
 
   // Called with one of START_OFFSETS when a time button is tapped.
@@ -62,6 +81,7 @@ export default function Index() {
     if (error){
       console.log(error.message);
     }
+    loadRequests(); // refresh the list so the new request shows up
   };
 
   // Load the rooms once when the map opens. RLS decides which rooms come back
@@ -76,6 +96,7 @@ export default function Index() {
       setRooms(data);
     };
     loadRooms();
+    loadRequests();
   }, []);
 
   return (
@@ -118,9 +139,26 @@ export default function Index() {
           <Text style={styles.name}>{selectedRoom.building}</Text>
         </View>
 
-        <Text style={styles.description}>
-          { `${selectedRoom.floor}, Room ${selectedRoom.room_num}`}
-        </Text>
+        <View style={styles.descriptionRow}>
+          <Text style={styles.description}>
+            { `${selectedRoom.floor}, Room ${selectedRoom.room_num}`}
+          </Text>
+          {roomRequests.length > 0 &&
+          <Pressable onPress={() => setRequestsOpen(!requestsOpen)}>
+            <Text style={styles.requestsLink}>
+              {requestsOpen ? "Hide requests" : "Check current requests"}
+            </Text>
+          </Pressable>}
+        </View>
+
+        {requestsOpen && roomRequests.map((request) => (
+          <View key={request.id} style={styles.requestRow}>
+            <Text style={styles.requestTime}>
+              {new Date(request.start_time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+            </Text>
+            <Text style={styles.joinCount}>0 joined</Text>
+          </View>
+        ))}
 
         {timePickerOpen ?
         <View style={styles.actions}>
@@ -212,9 +250,31 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: "bold",
   },
+  descriptionRow: {
+    flexDirection: "row",   // room text on the left, link on the right
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 16,
+  },
   description: {
     color: "gray",
-    marginTop: 16,
+  },
+  requestsLink: {
+    color: "#1a73e8",
+    fontWeight: "bold",
+  },
+  requestRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
+  },
+  requestTime: {
+    fontSize: 16,
+  },
+  joinCount: {
+    color: "gray",
   },
   actions: {
     flexDirection: "row",
