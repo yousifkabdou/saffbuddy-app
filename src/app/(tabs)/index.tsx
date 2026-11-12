@@ -34,6 +34,7 @@ export default function Index() {
   const tabBarHeight = useBottomTabBarHeight(); // the tab bar floats over the screen, so the panel needs room for it
   const markerRefs = useRef<Record<string, MapMarker | null>>({}); // each room's marker, by room id
   const [timePickerOpen, setTimePickerOpen] = useState(false); // true = time buttons replace the Request button
+  const [myRequest, setMyRequest] = useState<null | string>(null);
   const [requests, setRequests] = useState<PrayerRequest[]>([]); // every request RLS lets us see, all rooms
   const [requestsOpen, setRequestsOpen] = useState(false); // true = the panel shows this room's request list
 
@@ -67,6 +68,12 @@ export default function Index() {
       return;
     }
     setRequests(data);
+    const {data: myRequestData, error: myRequestError} = await supabase.rpc("my_request_id");
+    if(myRequestError){
+      console.log(myRequestError.message);
+      return;
+    }
+    setMyRequest(myRequestData);
   };
 
   // Called with one of START_OFFSETS when a time button is tapped.
@@ -154,6 +161,7 @@ export default function Index() {
         {requestsOpen && roomRequests.map((request) => (
           <View key={request.id} style={styles.requestRow}>
             <Text style={styles.requestTime}>
+              {request.id === myRequest && <Text style={styles.yoursLabel}>Yours · </Text>}
               {new Date(request.start_time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
             </Text>
             <Text style={styles.joinCount}>0 joined</Text>
@@ -272,6 +280,9 @@ const styles = StyleSheet.create({
   },
   requestTime: {
     fontSize: 16,
+  },
+  yoursLabel: {
+    fontWeight: "bold",
   },
   joinCount: {
     color: "gray",
