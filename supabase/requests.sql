@@ -18,7 +18,8 @@ for insert
 to authenticated
 with check (gender = (select gender from profiles where id = auth.uid())
 and (start_time between now() - interval '1 minute' and now() + interval '61 minutes')
-and requester = auth.uid());
+and requester = auth.uid()
+and (gender = (select gender from rooms where id = requests.room_id) or exists (select gender from rooms where id = requests.room_id and gender is null)));
 
 create policy "read same gender as user"
 on requests
