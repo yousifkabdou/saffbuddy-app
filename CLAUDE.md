@@ -66,11 +66,11 @@ part falls in which tier.
 
 ## Commits and the quiz
 
-- Before committing or pushing (including "C&P"), quiz me on the changes being
-  committed. Ask me to explain what the code does and why, in my own words.
-  Don't commit until my explanation would hold up if an interviewer asked about
-  it. If it's vague or wrong, point out the gap and ask again; don't just give
-  me the answer.
+- The quiz is optional: only quiz me when I ask for it. Don't block or delay a
+  commit or push because there was no quiz.
+- When I do ask, have me explain what the code does and why, in my own words,
+  until my explanation would hold up if an interviewer asked about it. If it's
+  vague or wrong, point out the gap and ask again; don't just give me the answer.
 - Quiz on what matters, not only "what does this do": why the state lives where
   it does, when an effect runs and what triggers a re-render, what happens if an
   async call fails or is slow, edge cases (expired requests, time zones, empty
