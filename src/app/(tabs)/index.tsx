@@ -28,24 +28,36 @@ function openDirections(room: Room) {
   }
 }
 
+// "2026-11-11T18:02:00Z" -> "1:02 PM" in the phone's time zone.
+function formatTime(isoTime: string) {
+  return new Date(isoTime).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
 export default function Index() {
   const [rooms, setRooms] = useState<Room[]>([]); // empty until Supabase answers, so the map shows with no markers at first
   const [selectedRoom, setSelectedRoom] = useState<null | Room>(null);
   const tabBarHeight = useBottomTabBarHeight(); // the tab bar floats over the screen, so the panel needs room for it
   const markerRefs = useRef<Record<string, MapMarker | null>>({}); // each room's marker, by room id
   const [timePickerOpen, setTimePickerOpen] = useState(false); // true = time buttons replace the Request button
-  const [myRequest, setMyRequest] = useState<null | string>(null);
+  const [myRequestId, setMyRequestId] = useState<null | string>(null);
   const [requests, setRequests] = useState<PrayerRequest[]>([]); // every request RLS lets us see, all rooms
   const [requestsOpen, setRequestsOpen] = useState(false); // true = the panel shows this room's request list
+  const [confirmCancelOpen, setConfirmCancelOpen] = useState(false); // true = "Cancel your request? Yes/No" replaces the buttons
 
   // Only the selected room's requests. Already sorted by start time (see loadRequests).
   const roomRequests = selectedRoom ? requests.filter((r) => r.room_id === selectedRoom.id) : [];
 
-  // Open a room's panel with the picker and list closed, so they don't carry over from the last room.
+  // The user's own request and its room, for the red Cancel button. undefined if they have none
+  // (or if myRequestId is stale and that row is no longer in the list).
+  const myRequestRow = requests.find((r) => r.id === myRequestId);
+  const myRequestRoom = rooms.find((room) => room.id === myRequestRow?.room_id);
+
+  // Open a room's panel with the picker, list and confirm closed, so they don't carry over from the last room.
   const openPanel = (room: Room) => {
     setSelectedRoom(room);
     setTimePickerOpen(false);
     setRequestsOpen(false);
+    setConfirmCancelOpen(false);
   };
 
   // Close the panel and deselect the marker right away. Otherwise Apple Maps keeps
@@ -57,6 +69,7 @@ export default function Index() {
     setSelectedRoom(null);
     setTimePickerOpen(false);
     setRequestsOpen(false);
+    setConfirmCancelOpen(false);
   };
 
   // Load every visible request (RLS: only the viewer's gender), earliest first.
@@ -73,7 +86,7 @@ export default function Index() {
       console.log(myRequestError.message);
       return;
     }
-    setMyRequest(myRequestData);
+    setMyRequestId(myRequestData);
   };
 
   // Called with one of START_OFFSETS when a time button is tapped.
@@ -89,6 +102,19 @@ export default function Index() {
       console.log(error.message);
     }
     loadRequests(); // refresh the list so the new request shows up
+  };
+
+  // Called when "Yes" is tapped in the cancel confirm.
+  const cancelRequest = async () => {
+    setConfirmCancelOpen(false);
+    
+    const{error} = await supabase.from("requests").delete().eq("id", myRequestId);
+    if (error){
+      console.log(error.message);
+      return;
+    }
+    setMyRequestId(null);
+    loadRequests(); // removes the row from the list; the rpc confirms myRequestId is null
   };
 
   // Load the rooms once when the map opens. RLS decides which rooms come back
@@ -161,14 +187,24 @@ export default function Index() {
         {requestsOpen && roomRequests.map((request) => (
           <View key={request.id} style={styles.requestRow}>
             <Text style={styles.requestTime}>
-              {request.id === myRequest && <Text style={styles.yoursLabel}>Yours · </Text>}
-              {new Date(request.start_time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+              {request.id === myRequestId && <Text style={styles.yoursLabel}>Yours · </Text>}
+              {formatTime(request.start_time)}
             </Text>
             <Text style={styles.joinCount}>0 joined</Text>
           </View>
         ))}
 
-        {timePickerOpen ?
+        {confirmCancelOpen ?
+        <View style={styles.actions}>
+          <Text style={styles.confirmText}>Cancel your request?</Text>
+          <Pressable style={styles.confirmYes} onPress={cancelRequest}>
+            <Text style={styles.timeText}>Yes</Text>
+          </Pressable>
+          <Pressable style={styles.confirmNo} onPress={() => setConfirmCancelOpen(false)}>
+            <Text style={styles.confirmNoText}>No</Text>
+          </Pressable>
+        </View>
+        : timePickerOpen ?
         <View style={styles.actions}>
           <Text style={styles.whenText}>When?</Text>
           {START_OFFSETS.map((minutes) => (
@@ -185,9 +221,17 @@ export default function Index() {
           <Pressable style={styles.directionsButton} onPress={() => openDirections(selectedRoom)}>
             <Text style={styles.directionsText}>➤</Text>
           </Pressable>
+          {myRequestRow ?
+          <Pressable style={[styles.requestButton, styles.cancelButton]} onPress={() => setConfirmCancelOpen(true)}>
+            <Text style={styles.cancelTitle} numberOfLines={1}>Cancel to start a new request</Text>
+            <Text style={styles.cancelDetail} numberOfLines={1}>
+              {myRequestRoom?.building} · {formatTime(myRequestRow.start_time)}
+            </Text>
+          </Pressable>
+          :
           <Pressable style={styles.requestButton} onPress={() => setTimePickerOpen(true)}>
             <Text style={styles.requestText}>Request</Text>
-          </Pressable>
+          </Pressable>}
         </View>}
       </View>}
     </View>
@@ -340,5 +384,46 @@ const styles = StyleSheet.create({
   },
   pickerClose: {
     padding: 8,
+  },
+  cancelButton: {
+    backgroundColor: "#d93025",   // red: you're in a request
+    paddingHorizontal: 16,
+  },
+  cancelTitle: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+  cancelDetail: {
+    color: "white",
+    fontSize: 12,
+    opacity: 0.85,
+  },
+  confirmText: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+  confirmYes: {
+    height: 52,
+    paddingHorizontal: 24,
+    borderRadius: 26,
+    backgroundColor: "#d93025",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 8,
+  },
+  confirmNo: {
+    height: 52,
+    paddingHorizontal: 24,
+    borderRadius: 26,
+    borderWidth: 1,
+    borderColor: "#ddd",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  confirmNoText: {
+    fontSize: 16,
+    fontWeight: "bold",
   },
 });
