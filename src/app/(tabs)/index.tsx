@@ -38,11 +38,10 @@ export default function Index() {
   const [selectedRoom, setSelectedRoom] = useState<null | Room>(null);
   const tabBarHeight = useBottomTabBarHeight(); // the tab bar floats over the screen, so the panel needs room for it
   const markerRefs = useRef<Record<string, MapMarker | null>>({}); // each room's marker, by room id
-  const [timePickerOpen, setTimePickerOpen] = useState(false); // true = time buttons replace the Request button
   const [myRequestId, setMyRequestId] = useState<null | string>(null);
   const [requests, setRequests] = useState<PrayerRequest[]>([]); // every request RLS lets us see, all rooms
   const [requestsOpen, setRequestsOpen] = useState(false); // true = the panel shows this room's request list
-  const [confirmCancelOpen, setConfirmCancelOpen] = useState(false); // true = "Cancel your request? Yes/No" replaces the buttons
+  const [panelMode, setPanelMode] = useState<"buttons" | "picker" | "cancel">("buttons");
 
   // Only the selected room's requests. Already sorted by start time (see loadRequests).
   const roomRequests = selectedRoom ? requests.filter((r) => r.room_id === selectedRoom.id) : [];
@@ -54,10 +53,9 @@ export default function Index() {
 
   // Open a room's panel with the picker, list and confirm closed, so they don't carry over from the last room.
   const openPanel = (room: Room) => {
+    setPanelMode("buttons");
     setSelectedRoom(room);
-    setTimePickerOpen(false);
     setRequestsOpen(false);
-    setConfirmCancelOpen(false);
   };
 
   // Close the panel and deselect the marker right away. Otherwise Apple Maps keeps
@@ -67,9 +65,7 @@ export default function Index() {
       markerRefs.current[selectedRoom.id]?.hideCallout();
     }
     setSelectedRoom(null);
-    setTimePickerOpen(false);
     setRequestsOpen(false);
-    setConfirmCancelOpen(false);
   };
 
   // Load every visible request (RLS: only the viewer's gender), earliest first.
@@ -91,7 +87,7 @@ export default function Index() {
 
   // Called with one of START_OFFSETS when a time button is tapped.
   const postRequest = async (minutes: number) => {
-    setTimePickerOpen(false);
+    setPanelMode("buttons");
     const {data} = await supabase.auth.getSession();
     const userId = data.session?.user.id;
     const roomID = selectedRoom?.id;
@@ -106,7 +102,7 @@ export default function Index() {
 
   // Called when "Yes" is tapped in the cancel confirm.
   const cancelRequest = async () => {
-    setConfirmCancelOpen(false);
+    setPanelMode("buttons");
     
     const{error} = await supabase.from("requests").delete().eq("id", myRequestId);
     if (error){
@@ -194,17 +190,17 @@ export default function Index() {
           </View>
         ))}
 
-        {confirmCancelOpen ?
+        {panelMode === "cancel" ?
         <View style={styles.actions}>
           <Text style={styles.confirmText}>Cancel your request?</Text>
           <Pressable style={styles.confirmYes} onPress={cancelRequest}>
             <Text style={styles.timeText}>Yes</Text>
           </Pressable>
-          <Pressable style={styles.confirmNo} onPress={() => setConfirmCancelOpen(false)}>
+          <Pressable style={styles.confirmNo} onPress={() => setPanelMode("buttons")}>
             <Text style={styles.confirmNoText}>No</Text>
           </Pressable>
         </View>
-        : timePickerOpen ?
+        : panelMode === "picker" ?
         <View style={styles.actions}>
           <Text style={styles.whenText}>When?</Text>
           {START_OFFSETS.map((minutes) => (
@@ -212,7 +208,7 @@ export default function Index() {
               <Text style={styles.timeText}>{minutes === 0 ? "Now" : minutes}</Text>
             </Pressable>
           ))}
-          <Pressable style={styles.pickerClose} onPress={() => setTimePickerOpen(false)}>
+          <Pressable style={styles.pickerClose} onPress={() => setPanelMode("buttons")}>
             <Text style={styles.closeText}>✕</Text>
           </Pressable>
         </View>
@@ -222,14 +218,14 @@ export default function Index() {
             <Text style={styles.directionsText}>➤</Text>
           </Pressable>
           {myRequestRow ?
-          <Pressable style={[styles.requestButton, styles.cancelButton]} onPress={() => setConfirmCancelOpen(true)}>
+          <Pressable style={[styles.requestButton, styles.cancelButton]} onPress={() => setPanelMode("cancel")}>
             <Text style={styles.cancelTitle} numberOfLines={1}>Cancel to start a new request</Text>
             <Text style={styles.cancelDetail} numberOfLines={1}>
               {myRequestRoom?.building} · {formatTime(myRequestRow.start_time)}
             </Text>
           </Pressable>
           :
-          <Pressable style={styles.requestButton} onPress={() => setTimePickerOpen(true)}>
+          <Pressable style={styles.requestButton} onPress={() => setPanelMode("picker")}>
             <Text style={styles.requestText}>Request</Text>
           </Pressable>}
         </View>}
