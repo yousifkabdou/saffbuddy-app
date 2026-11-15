@@ -32,9 +32,14 @@ part falls in which tier.
    invite/vouching logic, and access control: Row Level Security policies,
    column-level grants, `security definer` functions, and the app code that
    handles the logged-in user and inserts their data. Also the assertions in
-   tests for any of these. Claude may explain concepts, point to docs, give
-   hints, and review my code, but never writes this code for me, even if I ask
-   in a hurry. If I ask, remind me of this rule.
+   tests for any of these. Claude may explain
+   concepts, point to docs, give hints, and review my code, but never writes
+   this code for me, even if I ask in a hurry. If I ask, remind me of this rule.
+   - **Exception: SQL Editor checks for RLS.** Claude may write and run these
+     checks, but I must first write down my predicted result for each one (pass,
+     or which error), and Claude shows me my predictions next to the actual
+     results. Every check runs inside `begin … rollback`, and Claude shows me
+     each block before running it against the live database.
 2. **I design it; Claude writes it.** Features and how they behave. I decide
    what happens and roughly how; Claude implements it. I must be able to
    explain and debug it, and rewrite a small piece without help.
