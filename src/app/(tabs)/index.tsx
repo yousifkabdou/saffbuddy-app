@@ -1,6 +1,7 @@
 import { Room } from "@/data/room";
 import { useRequests } from "@/hooks/useRequests";
 import { supabase } from "@/lib/supabase";
+import { otherPerson } from "@/lib/wording";
 import { useBottomTabBarHeight } from "expo-router/js-tabs";
 import { useEffect, useRef, useState } from "react";
 import { Alert, Linking, Platform, Pressable, StyleSheet, Text, View } from "react-native";
@@ -41,6 +42,7 @@ export default function Index() {
   const { requests, myRequestId, myJoinedId, counts, postRequest, cancelRequest, joinRequest, leaveRequest } = useRequests();
   const [requestsOpen, setRequestsOpen] = useState(false); // true = the panel shows this room's request list
   const [panelMode, setPanelMode] = useState<"buttons" | "picker" | "cancel" | "leave">("buttons");
+  const [gender, setGender] = useState<"Men"|"Women"|null>(null);
 
   // Only the selected room's requests. Already sorted by start time (see loadRequests).
   const roomRequests = selectedRoom ? requests.filter((r) => r.room_id === selectedRoom.id) : [];
@@ -97,6 +99,20 @@ export default function Index() {
       setRooms(data);
     };
     loadRooms();
+  }, []);
+
+  useEffect( () =>{
+    const getGender = async () => {
+      const {data: sessionData} = await supabase.auth.getSession();
+      const userID = sessionData.session?.user.id;
+      const {data, error} = await supabase.from("profiles").select("gender").eq("id", userID).maybeSingle();
+      if (error){
+        console.log(error.message);
+        return;
+      }
+      setGender(data?.gender??null);
+    };
+    getGender();
   }, []);
 
   return (
@@ -159,7 +175,8 @@ export default function Index() {
               {formatTime(request.start_time)}
             </Text>
             <View style={styles.rowRight}>
-              <Text style={styles.joinCount}>{counts[request.id] ?? 0} joined</Text>
+              {/* counts holds joiners only; + 1 adds the requester */}
+              <Text style={styles.joinCount}>Total members: {(counts[request.id] ?? 0) + 1}</Text>
               {request.id !== myRequestId && request.id !== myJoinedId &&
               <Pressable style={styles.joinButton} onPress={() => handleJoin(request.id)}>
                 <Text style={styles.joinText}>Join</Text>
@@ -170,7 +187,12 @@ export default function Index() {
 
         {panelMode === "cancel" ?
         <View style={styles.actions}>
-          <Text style={styles.confirmText}>Cancel your request?</Text>
+          <View style={styles.confirmTextBox}>
+            <Text style={styles.confirmText}>Cancel your request?</Text>
+            <Text style={styles.warningText}>
+              You're cancelling on {otherPerson(gender)}. Be considerate of others' time.
+            </Text>
+          </View>
           <Pressable style={styles.confirmYes} onPress={() => { setPanelMode("buttons"); cancelRequest(); }}>
             <Text style={styles.timeText}>Yes</Text>
           </Pressable>
@@ -180,7 +202,12 @@ export default function Index() {
         </View>
         : panelMode === "leave" ?
         <View style={styles.actions}>
-          <Text style={styles.confirmText}>Leave this request?</Text>
+          <View style={styles.confirmTextBox}>
+            <Text style={styles.confirmText}>Leave this request?</Text>
+            <Text style={styles.warningText}>
+              Remember, {otherPerson(gender)} is expecting you.
+            </Text>
+          </View>
           <Pressable style={styles.confirmYes} onPress={() => { setPanelMode("buttons"); leaveRequest(); }}>
             <Text style={styles.timeText}>Yes</Text>
           </Pressable>
@@ -206,7 +233,10 @@ export default function Index() {
             <Text style={styles.directionsText}>➤</Text>
           </Pressable>
           {myRequestRow ?
-          <Pressable style={[styles.requestButton, styles.cancelButton]} onPress={() => setPanelMode("cancel")}>
+          <Pressable
+            style={[styles.requestButton, styles.cancelButton]}
+            // Only warn when someone joined; with no joiners, cancelling affects nobody.
+            onPress={() => ((counts[myRequestRow.id] ?? 0) > 0 ? setPanelMode("cancel") : cancelRequest())}>
             <Text style={styles.cancelTitle} numberOfLines={1}>Cancel to start a new request</Text>
             <Text style={styles.cancelDetail} numberOfLines={1}>
               {myRequestRoom?.building} · {formatTime(myRequestRow.start_time)}
@@ -406,10 +436,18 @@ const styles = StyleSheet.create({
     fontSize: 12,
     opacity: 0.85,
   },
-  confirmText: {
+  confirmTextBox: {
     flex: 1,
+    marginRight: 8,
+  },
+  confirmText: {
     fontSize: 16,
     fontWeight: "bold",
+  },
+  warningText: {
+    fontSize: 13,
+    color: "#555",
+    marginTop: 2,
   },
   confirmYes: {
     height: 52,

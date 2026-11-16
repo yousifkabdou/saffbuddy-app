@@ -25,5 +25,5 @@ or gender is null);
 insert into rooms (building, is_open, floor, room_num, gender, latitude, longitude)
 values
   ('Thompson Library', true, 'Ground Floor', '057', null, 39.999280, -83.014982),
-  ('18th Ave Library', true, 'Basement', '060', 'Men', 40.00167230845607, -83.01319747068368),
-  ('18th Ave Library', true, 'Basement', '050', 'Women', 40.00167230845607, -83.01319747068368);
+  ('18th Ave Library', true, 'Basement', '060', 'Women', 40.00167230845607, -83.01319747068368),
+  ('18th Ave Library', true, 'Basement', '050', 'Men', 40.00167230845607, -83.01319747068368);
