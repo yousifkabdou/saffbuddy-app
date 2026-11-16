@@ -38,9 +38,9 @@ export default function Index() {
   const [selectedRoom, setSelectedRoom] = useState<null | Room>(null);
   const tabBarHeight = useBottomTabBarHeight(); // the tab bar floats over the screen, so the panel needs room for it
   const markerRefs = useRef<Record<string, MapMarker | null>>({}); // each room's marker, by room id
-  const { requests, myRequestId, postRequest, cancelRequest } = useRequests();
+  const { requests, myRequestId, myJoinedId, counts, postRequest, cancelRequest, joinRequest, leaveRequest } = useRequests();
   const [requestsOpen, setRequestsOpen] = useState(false); // true = the panel shows this room's request list
-  const [panelMode, setPanelMode] = useState<"buttons" | "picker" | "cancel">("buttons");
+  const [panelMode, setPanelMode] = useState<"buttons" | "picker" | "cancel" | "leave">("buttons");
 
   // Only the selected room's requests. Already sorted by start time (see loadRequests).
   const roomRequests = selectedRoom ? requests.filter((r) => r.room_id === selectedRoom.id) : [];
@@ -49,6 +49,24 @@ export default function Index() {
   // (or if myRequestId is stale and that row is no longer in the list).
   const myRequestRow = requests.find((r) => r.id === myRequestId);
   const myRequestRoom = rooms.find((room) => room.id === myRequestRow?.room_id);
+
+  // Same idea for the request the user joined, for the "Joined" label and the blocked-Join alert.
+  const myJoinedRow = requests.find((r) => r.id === myJoinedId);
+  const myJoinedRoom = rooms.find((room) => room.id === myJoinedRow?.room_id);
+
+  // Join tapped on a row. A user can be in only one request, so if they already are,
+  // tell them what to do instead of sending an insert the database would refuse anyway.
+  const handleJoin = (requestId: string) => {
+    if (myRequestRow) {
+      Alert.alert("You already have a request", `Cancel your ${formatTime(myRequestRow.start_time)} request at ${myRequestRoom?.building} first.`);
+      return;
+    }
+    if (myJoinedRow) {
+      Alert.alert("You already joined a request", `Leave the ${formatTime(myJoinedRow.start_time)} request at ${myJoinedRoom?.building} first.`);
+      return;
+    }
+    joinRequest(requestId);
+  };
 
   // Open a room's panel with the picker, list and confirm closed, so they don't carry over from the last room.
   const openPanel = (room: Room) => {
@@ -137,9 +155,16 @@ export default function Index() {
           <View key={request.id} style={styles.requestRow}>
             <Text style={styles.requestTime}>
               {request.id === myRequestId && <Text style={styles.yoursLabel}>Yours · </Text>}
+              {request.id === myJoinedId && <Text style={styles.yoursLabel}>Joined · </Text>}
               {formatTime(request.start_time)}
             </Text>
-            <Text style={styles.joinCount}>0 joined</Text>
+            <View style={styles.rowRight}>
+              <Text style={styles.joinCount}>{counts[request.id] ?? 0} joined</Text>
+              {request.id !== myRequestId && request.id !== myJoinedId &&
+              <Pressable style={styles.joinButton} onPress={() => handleJoin(request.id)}>
+                <Text style={styles.joinText}>Join</Text>
+              </Pressable>}
+            </View>
           </View>
         ))}
 
@@ -147,6 +172,16 @@ export default function Index() {
         <View style={styles.actions}>
           <Text style={styles.confirmText}>Cancel your request?</Text>
           <Pressable style={styles.confirmYes} onPress={() => { setPanelMode("buttons"); cancelRequest(); }}>
+            <Text style={styles.timeText}>Yes</Text>
+          </Pressable>
+          <Pressable style={styles.confirmNo} onPress={() => setPanelMode("buttons")}>
+            <Text style={styles.confirmNoText}>No</Text>
+          </Pressable>
+        </View>
+        : panelMode === "leave" ?
+        <View style={styles.actions}>
+          <Text style={styles.confirmText}>Leave this request?</Text>
+          <Pressable style={styles.confirmYes} onPress={() => { setPanelMode("buttons"); leaveRequest(); }}>
             <Text style={styles.timeText}>Yes</Text>
           </Pressable>
           <Pressable style={styles.confirmNo} onPress={() => setPanelMode("buttons")}>
@@ -175,6 +210,13 @@ export default function Index() {
             <Text style={styles.cancelTitle} numberOfLines={1}>Cancel to start a new request</Text>
             <Text style={styles.cancelDetail} numberOfLines={1}>
               {myRequestRoom?.building} · {formatTime(myRequestRow.start_time)}
+            </Text>
+          </Pressable>
+          : myJoinedRow ?
+          <Pressable style={[styles.requestButton, styles.cancelButton]} onPress={() => setPanelMode("leave")}>
+            <Text style={styles.cancelTitle} numberOfLines={1}>Leave request</Text>
+            <Text style={styles.cancelDetail} numberOfLines={1}>
+              {myJoinedRoom?.building} · {formatTime(myJoinedRow.start_time)}
             </Text>
           </Pressable>
           :
@@ -267,6 +309,7 @@ const styles = StyleSheet.create({
   requestRow: {
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "center",
     paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: "#eee",
@@ -279,6 +322,21 @@ const styles = StyleSheet.create({
   },
   joinCount: {
     color: "gray",
+  },
+  rowRight: {
+    flexDirection: "row",   // count and Join button side by side
+    alignItems: "center",
+  },
+  joinButton: {
+    marginLeft: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: "black",
+  },
+  joinText: {
+    color: "white",
+    fontWeight: "bold",
   },
   actions: {
     flexDirection: "row",
