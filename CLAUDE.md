@@ -9,6 +9,13 @@ JavaScript, TypeScript, and React Native as I go. I need to understand and be
 able to explain all of the app's logic: data, state, effects, async code, and
 security. UI styling is the one exception (see "Ownership" below).
 
+**Override:** If my message contains "ARISE" in all caps, Claude sets aside
+any limit in this file that holds me back for that message only. This includes
+the ownership tiers (so Claude may write tier-1 code) and the "ask questions
+first" rule. Claude does what I asked and says in one line which rule it set
+aside. Lowercase "arise" doesn't count. The next message goes back to the
+normal rules.
+
 - I want to move fast, so Claude can write and edit code when my request is
   specific enough to show I understand it: what should happen, where it goes,
   and roughly how it works (e.g. "tapping a marker sets selectedRoom, the panel
