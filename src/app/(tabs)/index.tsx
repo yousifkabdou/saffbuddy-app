@@ -1,5 +1,5 @@
-import { PrayerRequest } from "@/data/request";
 import { Room } from "@/data/room";
+import { useRequests } from "@/hooks/useRequests";
 import { supabase } from "@/lib/supabase";
 import { useBottomTabBarHeight } from "expo-router/js-tabs";
 import { useEffect, useRef, useState } from "react";
@@ -38,8 +38,7 @@ export default function Index() {
   const [selectedRoom, setSelectedRoom] = useState<null | Room>(null);
   const tabBarHeight = useBottomTabBarHeight(); // the tab bar floats over the screen, so the panel needs room for it
   const markerRefs = useRef<Record<string, MapMarker | null>>({}); // each room's marker, by room id
-  const [myRequestId, setMyRequestId] = useState<null | string>(null);
-  const [requests, setRequests] = useState<PrayerRequest[]>([]); // every request RLS lets us see, all rooms
+  const { requests, myRequestId, postRequest, cancelRequest } = useRequests();
   const [requestsOpen, setRequestsOpen] = useState(false); // true = the panel shows this room's request list
   const [panelMode, setPanelMode] = useState<"buttons" | "picker" | "cancel">("buttons");
 
@@ -68,51 +67,6 @@ export default function Index() {
     setRequestsOpen(false);
   };
 
-  // Load every visible request (RLS: only the viewer's gender), earliest first.
-  // Name the columns: requester is hidden by the column grant, so "*" would fail.
-  const loadRequests = async () => {
-    const { data, error } = await supabase.from("requests").select("id, room_id, start_time").order("start_time");
-    if (error) {
-      console.log(error.message);
-      return;
-    }
-    setRequests(data);
-    const {data: myRequestData, error: myRequestError} = await supabase.rpc("my_request_id");
-    if(myRequestError){
-      console.log(myRequestError.message);
-      return;
-    }
-    setMyRequestId(myRequestData);
-  };
-
-  // Called with one of START_OFFSETS when a time button is tapped.
-  const postRequest = async (minutes: number) => {
-    setPanelMode("buttons");
-    const {data} = await supabase.auth.getSession();
-    const userId = data.session?.user.id;
-    const roomID = selectedRoom?.id;
-    const {data: userGender} = await supabase.from('profiles').select('gender').eq('id', userId).maybeSingle();
-    const {error} = await supabase.from("requests").insert({room_id: roomID, requester: userId, gender: userGender?.gender, start_time: new Date(Date.now() + minutes * 60 * 1000).toISOString()})
-    
-    if (error){
-      console.log(error.message);
-    }
-    loadRequests(); // refresh the list so the new request shows up
-  };
-
-  // Called when "Yes" is tapped in the cancel confirm.
-  const cancelRequest = async () => {
-    setPanelMode("buttons");
-    
-    const{error} = await supabase.from("requests").delete().eq("id", myRequestId);
-    if (error){
-      console.log(error.message);
-      return;
-    }
-    setMyRequestId(null);
-    loadRequests(); // removes the row from the list; the rpc confirms myRequestId is null
-  };
-
   // Load the rooms once when the map opens. RLS decides which rooms come back
   // (shared rooms plus the viewer's own gender's rooms).
   useEffect(() => {
@@ -125,7 +79,6 @@ export default function Index() {
       setRooms(data);
     };
     loadRooms();
-    loadRequests();
   }, []);
 
   return (
@@ -193,7 +146,7 @@ export default function Index() {
         {panelMode === "cancel" ?
         <View style={styles.actions}>
           <Text style={styles.confirmText}>Cancel your request?</Text>
-          <Pressable style={styles.confirmYes} onPress={cancelRequest}>
+          <Pressable style={styles.confirmYes} onPress={() => { setPanelMode("buttons"); cancelRequest(); }}>
             <Text style={styles.timeText}>Yes</Text>
           </Pressable>
           <Pressable style={styles.confirmNo} onPress={() => setPanelMode("buttons")}>
@@ -204,7 +157,7 @@ export default function Index() {
         <View style={styles.actions}>
           <Text style={styles.whenText}>When?</Text>
           {START_OFFSETS.map((minutes) => (
-            <Pressable key={minutes} style={styles.timeButton} onPress={() => postRequest(minutes)}>
+            <Pressable key={minutes} style={styles.timeButton} onPress={() => { setPanelMode("buttons"); postRequest(selectedRoom.id, minutes); }}>
               <Text style={styles.timeText}>{minutes === 0 ? "Now" : minutes}</Text>
             </Pressable>
           ))}
