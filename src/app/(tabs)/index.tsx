@@ -1,15 +1,17 @@
 import { Room } from "@/data/room";
 import { useRequests } from "@/hooks/useRequests";
 import { supabase } from "@/lib/supabase";
+import { isExpired, isInProgress } from "@/lib/requestTime";
 import { otherPerson } from "@/lib/wording";
 import { useBottomTabBarHeight } from "expo-router/js-tabs";
 import { useEffect, useRef, useState } from "react";
 import { Alert, Linking, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import MapView, { MapMarker, Marker } from "react-native-maps";
 
-// Start time choices, in minutes from now. The requests insert policy only
-// accepts start times up to 60 minutes ahead, so keep these in sync.
-const START_OFFSETS = [0, 15, 30, 45, 60];
+// Start time choices, in minutes from now. No "Now": a request needs a few minutes
+// for anyone to see it and walk over. The requests insert policy only accepts
+// start times 5-45 minutes ahead (with 1 min slack), so keep these in sync.
+const START_OFFSETS = [5, 10, 15, 30, 45];
 
 // Opens walking directions to a room in the user's map app.
 // iOS asks Apple Maps or Google Maps; Android goes straight to Google Maps.
@@ -43,9 +45,21 @@ export default function Index() {
   const [requestsOpen, setRequestsOpen] = useState(false); // true = the panel shows this room's request list
   const [panelMode, setPanelMode] = useState<"buttons" | "picker" | "cancel" | "leave">("buttons");
   const [gender, setGender] = useState<"Men"|"Women"|null>(null);
+  const [now, setNow] = useState(Date.now()); // the clock, refreshed every 30s so time-based UI updates on its own
 
-  // Only the selected room's requests. Already sorted by start time (see loadRequests).
-  const roomRequests = selectedRoom ? requests.filter((r) => r.room_id === selectedRoom.id) : [];
+  // Re-render every 30 seconds so rows switch to "In progress" and expired ones disappear
+  // without a reload. The cleanup stops the timer when the screen unmounts.
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30 * 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Only the selected room's requests that haven't expired. Filtered here (not in loadRequests)
+  // so a request that expires while the screen is open disappears on the next tick.
+  // Already sorted by start time (see loadRequests).
+  const roomRequests = selectedRoom
+    ? requests.filter((r) => r.room_id === selectedRoom.id && !isExpired(r.start_time, now))
+    : [];
 
   // The user's own request and its room, for the red Cancel button. undefined if they have none
   // (or if myRequestId is stale and that row is no longer in the list).
@@ -177,7 +191,10 @@ export default function Index() {
             <View style={styles.rowRight}>
               {/* counts holds joiners only; + 1 adds the requester */}
               <Text style={styles.joinCount}>Total members: {(counts[request.id] ?? 0) + 1}</Text>
-              {request.id !== myRequestId && request.id !== myJoinedId &&
+              {/* Past the join cutoff nobody can join (the joiners insert policy refuses it too) */}
+              {isInProgress(request.start_time, now) ?
+              <Text style={styles.inProgressText}>In progress</Text>
+              : request.id !== myRequestId && request.id !== myJoinedId &&
               <Pressable style={styles.joinButton} onPress={() => handleJoin(request.id)}>
                 <Text style={styles.joinText}>Join</Text>
               </Pressable>}
@@ -220,7 +237,8 @@ export default function Index() {
           <Text style={styles.whenText}>When?</Text>
           {START_OFFSETS.map((minutes) => (
             <Pressable key={minutes} style={styles.timeButton} onPress={() => { setPanelMode("buttons"); postRequest(selectedRoom.id, minutes); }}>
-              <Text style={styles.timeText}>{minutes === 0 ? "Now" : minutes}</Text>
+              <Text style={styles.timeText}>{minutes}</Text>
+              <Text style={styles.timeUnit} numberOfLines={1} adjustsFontSizeToFit>min</Text>
             </Pressable>
           ))}
           <Pressable style={styles.pickerClose} onPress={() => setPanelMode("buttons")}>
@@ -232,7 +250,17 @@ export default function Index() {
           <Pressable style={styles.directionsButton} onPress={() => openDirections(selectedRoom)}>
             <Text style={styles.directionsText}>➤</Text>
           </Pressable>
-          {myRequestRow ?
+          {/* Once a request is in progress, the prayer is happening: "Done" ends it with no warning */}
+          {myRequestRow && isInProgress(myRequestRow.start_time, now) ?
+          <Pressable style={[styles.requestButton, styles.doneButton]} onPress={cancelRequest}>
+            <Text style={styles.cancelTitle} numberOfLines={1} adjustsFontSizeToFit>
+              Done<Text style={styles.doneBlessing}> · May Allah accept your prayer</Text>
+            </Text>
+            <Text style={styles.cancelDetail} numberOfLines={1}>
+              {myRequestRoom?.building} · {formatTime(myRequestRow.start_time)}
+            </Text>
+          </Pressable>
+          : myRequestRow ?
           <Pressable
             style={[styles.requestButton, styles.cancelButton]}
             // Only warn when someone joined; with no joiners, cancelling affects nobody.
@@ -240,6 +268,15 @@ export default function Index() {
             <Text style={styles.cancelTitle} numberOfLines={1}>Cancel to start a new request</Text>
             <Text style={styles.cancelDetail} numberOfLines={1}>
               {myRequestRoom?.building} · {formatTime(myRequestRow.start_time)}
+            </Text>
+          </Pressable>
+          : myJoinedRow && isInProgress(myJoinedRow.start_time, now) ?
+          <Pressable style={[styles.requestButton, styles.doneButton]} onPress={leaveRequest}>
+            <Text style={styles.cancelTitle} numberOfLines={1} adjustsFontSizeToFit>
+              Done<Text style={styles.doneBlessing}> · May Allah accept your prayer</Text>
+            </Text>
+            <Text style={styles.cancelDetail} numberOfLines={1}>
+              {myJoinedRoom?.building} · {formatTime(myJoinedRow.start_time)}
             </Text>
           </Pressable>
           : myJoinedRow ?
@@ -419,12 +456,29 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "bold",
   },
+  timeUnit: {
+    color: "white",
+    fontSize: 10,
+    paddingHorizontal: 4,   // keeps the word off the rounded edges
+  },
   pickerClose: {
     padding: 8,
   },
   cancelButton: {
     backgroundColor: "#d93025",   // red: you're in a request
     paddingHorizontal: 16,
+  },
+  doneButton: {
+    backgroundColor: "#1e8e3e",   // green: the prayer is happening, nothing to warn about
+    paddingHorizontal: 16,
+  },
+  doneBlessing: {
+    fontWeight: "normal",
+  },
+  inProgressText: {
+    color: "#1e8e3e",
+    fontWeight: "bold",
+    marginLeft: 12,
   },
   cancelTitle: {
     color: "white",

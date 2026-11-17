@@ -19,7 +19,9 @@ for insert
 to authenticated
 with check (member = auth.uid()
 and my_request_id() is null
-and ( select gender from requests where id = request_id ) = ( select gender from profiles where id = auth.uid() ));
+and ( select gender from requests where id = request_id ) = ( select gender from profiles where id = auth.uid() )
+and (now() - interval '2 minutes' < (select start_time from requests where id = request_id))
+);
 
 create policy "users can only read their own rows"
 on joiners

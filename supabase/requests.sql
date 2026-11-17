@@ -12,12 +12,12 @@ grant insert, delete on requests to authenticated;
 grant select (id, room_id, start_time, gender) on requests to authenticated;
 
 
-create policy "only insert as self, start time = now up to 60 mins later"
+create policy "only insert as self, start time 5 to 45 mins ahead"
 on requests
 for insert
 to authenticated
 with check (gender = (select gender from profiles where id = auth.uid())
-and (start_time between now() - interval '1 minute' and now() + interval '61 minutes')
+and (start_time between now() + interval '4 minutes' and now() + interval '46 minutes') -- app offers 5-45 min; 1 min slack each side for request delay
 and requester = auth.uid()
 and (gender = (select gender from rooms where id = requests.room_id) or exists (select gender from rooms where id = requests.room_id and gender is null))
 and (public.check_for_member_request() is null)
