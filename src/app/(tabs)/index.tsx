@@ -41,10 +41,11 @@ export default function Index() {
   const [selectedRoom, setSelectedRoom] = useState<null | Room>(null);
   const tabBarHeight = useBottomTabBarHeight(); // the tab bar floats over the screen, so the panel needs room for it
   const markerRefs = useRef<Record<string, MapMarker | null>>({}); // each room's marker, by room id
-  const { requests, myRequestId, myJoinedId, counts, postRequest, cancelRequest, joinRequest, leaveRequest, loadRequests, loadJoins } = useRequests();
+  const [gender, setGender] = useState<"Men"|"Women"|null>(null);
+  // gender (loaded below from profiles) picks the live-update channel
+  const { requests, myRequestId, myJoinedId, counts, postRequest, cancelRequest, joinRequest, leaveRequest, loadRequests, loadJoins } = useRequests(gender);
   const [requestsOpen, setRequestsOpen] = useState(false); // true = the panel shows this room's request list
   const [panelMode, setPanelMode] = useState<"buttons" | "picker" | "cancel" | "leave">("buttons");
-  const [gender, setGender] = useState<"Men"|"Women"|null>(null);
   const [now, setNow] = useState(Date.now()); // the clock, refreshed every 30s so time-based UI updates on its own
   // The request the user tapped Done on. Done deletes nothing: the server deletes the request
   // later and counts it in the tally (docs/adr/0001), so this only hides it on this phone.
