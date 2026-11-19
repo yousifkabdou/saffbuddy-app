@@ -1,10 +1,9 @@
+import { useSharedRequests } from "@/context/RequestsContext";
 import { Room } from "@/data/room";
-import { useRequests } from "@/hooks/useRequests";
-import { supabase } from "@/lib/supabase";
-import { freeAgainAt, isExpired, isInProgress } from "@/lib/requestTime";
+import { formatTime, freeAgainAt, isExpired, isInProgress } from "@/lib/requestTime";
 import { otherPerson } from "@/lib/wording";
 import { useBottomTabBarHeight } from "expo-router/js-tabs";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Alert, Linking, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import MapView, { MapMarker, Marker } from "react-native-maps";
 
@@ -31,32 +30,18 @@ function openDirections(room: Room) {
   }
 }
 
-// "2026-11-11T18:02:00Z" -> "1:02 PM" in the phone's time zone.
-function formatTime(isoTime: string) {
-  return new Date(isoTime).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-}
-
 export default function Index() {
-  const [rooms, setRooms] = useState<Room[]>([]); // empty until Supabase answers, so the map shows with no markers at first
   const [selectedRoom, setSelectedRoom] = useState<null | Room>(null);
   const tabBarHeight = useBottomTabBarHeight(); // the tab bar floats over the screen, so the panel needs room for it
   const markerRefs = useRef<Record<string, MapMarker | null>>({}); // each room's marker, by room id
-  const [gender, setGender] = useState<"Men"|"Women"|null>(null);
-  // gender (loaded below from profiles) picks the live-update channel
-  const { requests, myRequestId, myJoinedId, counts, postRequest, cancelRequest, joinRequest, leaveRequest, loadRequests, loadJoins } = useRequests(gender);
+  // Request data, the clock and Done live in RequestsProvider (tabs layout) so every tab shares one copy.
+  const {
+    rooms, gender, now, requests, myRequestId, myJoinedId, counts, setDoneId,
+    myRequestRoom, myJoinedRoom, activeRequestRow, activeJoinedRow, finishingRow,
+    handleJoin, postRequest, cancelRequest, leaveRequest, loadRequests, loadJoins,
+  } = useSharedRequests();
   const [requestsOpen, setRequestsOpen] = useState(false); // true = the panel shows this room's request list
   const [panelMode, setPanelMode] = useState<"buttons" | "picker" | "cancel" | "leave">("buttons");
-  const [now, setNow] = useState(Date.now()); // the clock, refreshed every 30s so time-based UI updates on its own
-  // The request the user tapped Done on. Done deletes nothing: the server deletes the request
-  // later and counts it in the tally (docs/adr/0001), so this only hides it on this phone.
-  const [doneId, setDoneId] = useState<string | null>(null);
-
-  // Re-render every 30 seconds so rows switch to "In progress" and expired ones disappear
-  // without a reload. The cleanup stops the timer when the screen unmounts.
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 30 * 1000);
-    return () => clearInterval(timer);
-  }, []);
 
   // Only the selected room's requests that haven't expired. Filtered here (not in loadRequests)
   // so a request that expires while the screen is open disappears on the next tick.
@@ -64,42 +49,6 @@ export default function Index() {
   const roomRequests = selectedRoom
     ? requests.filter((r) => r.room_id === selectedRoom.id && !isExpired(r.start_time, now))
     : [];
-
-  // The user's own request and its room, for the red Cancel button. undefined if they have none
-  // (or if myRequestId is stale and that row is no longer in the list).
-  const myRequestRow = requests.find((r) => r.id === myRequestId);
-  const myRequestRoom = rooms.find((room) => room.id === myRequestRow?.room_id);
-
-  // Same idea for the request the user joined, for the "Joined" label and the blocked-Join alert.
-  const myJoinedRow = requests.find((r) => r.id === myJoinedId);
-  const myJoinedRoom = rooms.find((room) => room.id === myJoinedRow?.room_id);
-
-  // The rows the user is still "in": not tapped Done and not expired. undefined otherwise.
-  const isFinished = (row: { id: string; start_time: string }) => row.id === doneId || isExpired(row.start_time, now);
-  const activeRequestRow = myRequestRow && !isFinished(myRequestRow) ? myRequestRow : undefined;
-  const activeJoinedRow = myJoinedRow && !isFinished(myJoinedRow) ? myJoinedRow : undefined;
-
-  // Finished but not yet deleted by the server. Until then the database still sees the user
-  // in it, so posting or joining would be refused.
-  const finishingRow = (!activeRequestRow && myRequestRow) || (!activeJoinedRow && myJoinedRow) || undefined;
-
-  // Join tapped on a row. A user can be in only one request, so if they already are,
-  // tell them what to do instead of sending an insert the database would refuse anyway.
-  const handleJoin = (requestId: string) => {
-    if (activeRequestRow) {
-      Alert.alert("You already have a request", `Cancel your ${formatTime(activeRequestRow.start_time)} request at ${myRequestRoom?.building} first.`);
-      return;
-    }
-    if (activeJoinedRow) {
-      Alert.alert("You already joined a request", `Leave the ${formatTime(activeJoinedRow.start_time)} request at ${myJoinedRoom?.building} first.`);
-      return;
-    }
-    if (finishingRow) {
-      Alert.alert("Finishing up your last prayer", `You can join again from ${formatTime(freeAgainAt(finishingRow.start_time))}.`);
-      return;
-    }
-    joinRequest(requestId);
-  };
 
   // Open a room's panel with the picker, list and confirm closed, so they don't carry over from the last room.
   const openPanel = (room: Room) => {
@@ -117,34 +66,6 @@ export default function Index() {
     setSelectedRoom(null);
     setRequestsOpen(false);
   };
-
-  // Load the rooms once when the map opens. RLS decides which rooms come back
-  // (shared rooms plus the viewer's own gender's rooms).
-  useEffect(() => {
-    const loadRooms = async () => {
-      const { data, error } = await supabase.from("rooms").select("*");
-      if (error) {
-        console.log(error.message);
-        return;
-      }
-      setRooms(data);
-    };
-    loadRooms();
-  }, []);
-
-  useEffect( () =>{
-    const getGender = async () => {
-      const {data: sessionData} = await supabase.auth.getSession();
-      const userID = sessionData.session?.user.id;
-      const {data, error} = await supabase.from("profiles").select("gender").eq("id", userID).maybeSingle();
-      if (error){
-        console.log(error.message);
-        return;
-      }
-      setGender(data?.gender??null);
-    };
-    getGender();
-  }, []);
 
   return (
 
