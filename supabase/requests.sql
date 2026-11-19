@@ -37,9 +37,9 @@ using (requester = (auth.uid()));
 
 /* No update: to change a request, cancel it and post a new one */
 
-/* No expiry yet: a scheduled job will delete requests 15 minutes after their
-   start time and add them to the per-room daily tally (docs/adr/0001), so no
-   request history is kept. Until then, requests stay until cancelled. */
+/* Expiry: a pg_cron job (supabase/expiry.sql) deletes requests 17 minutes
+   after their start time and adds them to the per-room daily tally
+   (docs/adr/0001), so no request history is kept. */
 
 /* Returns the caller's own request id (or null), so the app can mark it "Yours"
    without being able to read anyone's requester column */
