@@ -1,7 +1,7 @@
 import { Room } from "@/data/room";
 import { useRequests } from "@/hooks/useRequests";
 import { supabase } from "@/lib/supabase";
-import { isExpired, isInProgress } from "@/lib/requestTime";
+import { freeAgainAt, isExpired, isInProgress } from "@/lib/requestTime";
 import { otherPerson } from "@/lib/wording";
 import { useBottomTabBarHeight } from "expo-router/js-tabs";
 import { useEffect, useRef, useState } from "react";
@@ -41,11 +41,14 @@ export default function Index() {
   const [selectedRoom, setSelectedRoom] = useState<null | Room>(null);
   const tabBarHeight = useBottomTabBarHeight(); // the tab bar floats over the screen, so the panel needs room for it
   const markerRefs = useRef<Record<string, MapMarker | null>>({}); // each room's marker, by room id
-  const { requests, myRequestId, myJoinedId, counts, postRequest, cancelRequest, joinRequest, leaveRequest } = useRequests();
+  const { requests, myRequestId, myJoinedId, counts, postRequest, cancelRequest, joinRequest, leaveRequest, loadRequests, loadJoins } = useRequests();
   const [requestsOpen, setRequestsOpen] = useState(false); // true = the panel shows this room's request list
   const [panelMode, setPanelMode] = useState<"buttons" | "picker" | "cancel" | "leave">("buttons");
   const [gender, setGender] = useState<"Men"|"Women"|null>(null);
   const [now, setNow] = useState(Date.now()); // the clock, refreshed every 30s so time-based UI updates on its own
+  // The request the user tapped Done on. Done deletes nothing: the server deletes the request
+  // later and counts it in the tally (docs/adr/0001), so this only hides it on this phone.
+  const [doneId, setDoneId] = useState<string | null>(null);
 
   // Re-render every 30 seconds so rows switch to "In progress" and expired ones disappear
   // without a reload. The cleanup stops the timer when the screen unmounts.
@@ -70,15 +73,28 @@ export default function Index() {
   const myJoinedRow = requests.find((r) => r.id === myJoinedId);
   const myJoinedRoom = rooms.find((room) => room.id === myJoinedRow?.room_id);
 
+  // The rows the user is still "in": not tapped Done and not expired. undefined otherwise.
+  const isFinished = (row: { id: string; start_time: string }) => row.id === doneId || isExpired(row.start_time, now);
+  const activeRequestRow = myRequestRow && !isFinished(myRequestRow) ? myRequestRow : undefined;
+  const activeJoinedRow = myJoinedRow && !isFinished(myJoinedRow) ? myJoinedRow : undefined;
+
+  // Finished but not yet deleted by the server. Until then the database still sees the user
+  // in it, so posting or joining would be refused.
+  const finishingRow = (!activeRequestRow && myRequestRow) || (!activeJoinedRow && myJoinedRow) || undefined;
+
   // Join tapped on a row. A user can be in only one request, so if they already are,
   // tell them what to do instead of sending an insert the database would refuse anyway.
   const handleJoin = (requestId: string) => {
-    if (myRequestRow) {
-      Alert.alert("You already have a request", `Cancel your ${formatTime(myRequestRow.start_time)} request at ${myRequestRoom?.building} first.`);
+    if (activeRequestRow) {
+      Alert.alert("You already have a request", `Cancel your ${formatTime(activeRequestRow.start_time)} request at ${myRequestRoom?.building} first.`);
       return;
     }
-    if (myJoinedRow) {
-      Alert.alert("You already joined a request", `Leave the ${formatTime(myJoinedRow.start_time)} request at ${myJoinedRoom?.building} first.`);
+    if (activeJoinedRow) {
+      Alert.alert("You already joined a request", `Leave the ${formatTime(activeJoinedRow.start_time)} request at ${myJoinedRoom?.building} first.`);
+      return;
+    }
+    if (finishingRow) {
+      Alert.alert("Finishing up your last prayer", `You can join again from ${formatTime(freeAgainAt(finishingRow.start_time))}.`);
       return;
     }
     joinRequest(requestId);
@@ -250,40 +266,50 @@ export default function Index() {
           <Pressable style={styles.directionsButton} onPress={() => openDirections(selectedRoom)}>
             <Text style={styles.directionsText}>➤</Text>
           </Pressable>
-          {/* Once a request is in progress, the prayer is happening: "Done" ends it with no warning */}
-          {myRequestRow && isInProgress(myRequestRow.start_time, now) ?
-          <Pressable style={[styles.requestButton, styles.doneButton]} onPress={cancelRequest}>
+          {/* Once a request is in progress, the prayer is happening: "Done" ends it with no warning.
+              Done only hides it here; deleting would lose it from the tally. */}
+          {activeRequestRow && isInProgress(activeRequestRow.start_time, now) ?
+          <Pressable style={[styles.requestButton, styles.doneButton]} onPress={() => setDoneId(activeRequestRow.id)}>
             <Text style={styles.cancelTitle} numberOfLines={1} adjustsFontSizeToFit>
               Done<Text style={styles.doneBlessing}> · May Allah accept your prayer</Text>
             </Text>
             <Text style={styles.cancelDetail} numberOfLines={1}>
-              {myRequestRoom?.building} · {formatTime(myRequestRow.start_time)}
+              {myRequestRoom?.building} · {formatTime(activeRequestRow.start_time)}
             </Text>
           </Pressable>
-          : myRequestRow ?
+          : activeRequestRow ?
           <Pressable
             style={[styles.requestButton, styles.cancelButton]}
             // Only warn when someone joined; with no joiners, cancelling affects nobody.
-            onPress={() => ((counts[myRequestRow.id] ?? 0) > 0 ? setPanelMode("cancel") : cancelRequest())}>
+            onPress={() => ((counts[activeRequestRow.id] ?? 0) > 0 ? setPanelMode("cancel") : cancelRequest())}>
             <Text style={styles.cancelTitle} numberOfLines={1}>Cancel to start a new request</Text>
             <Text style={styles.cancelDetail} numberOfLines={1}>
-              {myRequestRoom?.building} · {formatTime(myRequestRow.start_time)}
+              {myRequestRoom?.building} · {formatTime(activeRequestRow.start_time)}
             </Text>
           </Pressable>
-          : myJoinedRow && isInProgress(myJoinedRow.start_time, now) ?
-          <Pressable style={[styles.requestButton, styles.doneButton]} onPress={leaveRequest}>
+          : activeJoinedRow && isInProgress(activeJoinedRow.start_time, now) ?
+          <Pressable style={[styles.requestButton, styles.doneButton]} onPress={() => setDoneId(activeJoinedRow.id)}>
             <Text style={styles.cancelTitle} numberOfLines={1} adjustsFontSizeToFit>
               Done<Text style={styles.doneBlessing}> · May Allah accept your prayer</Text>
             </Text>
             <Text style={styles.cancelDetail} numberOfLines={1}>
-              {myJoinedRoom?.building} · {formatTime(myJoinedRow.start_time)}
+              {myJoinedRoom?.building} · {formatTime(activeJoinedRow.start_time)}
             </Text>
           </Pressable>
-          : myJoinedRow ?
+          : activeJoinedRow ?
           <Pressable style={[styles.requestButton, styles.cancelButton]} onPress={() => setPanelMode("leave")}>
             <Text style={styles.cancelTitle} numberOfLines={1}>Leave request</Text>
             <Text style={styles.cancelDetail} numberOfLines={1}>
-              {myJoinedRoom?.building} · {formatTime(myJoinedRow.start_time)}
+              {myJoinedRoom?.building} · {formatTime(activeJoinedRow.start_time)}
+            </Text>
+          </Pressable>
+          : finishingRow ?
+          // Waiting for the server to delete it. Tapping re-fetches; once it's gone,
+          // myRequestId/myJoinedId come back null and the normal Request button returns.
+          <Pressable style={[styles.requestButton, styles.finishingButton]} onPress={() => { loadRequests(); loadJoins(); }}>
+            <Text style={styles.cancelTitle} numberOfLines={1}>Finishing up · tap to refresh</Text>
+            <Text style={styles.cancelDetail} numberOfLines={1}>
+              You can request again from {formatTime(freeAgainAt(finishingRow.start_time))}
             </Text>
           </Pressable>
           :
@@ -470,6 +496,10 @@ const styles = StyleSheet.create({
   },
   doneButton: {
     backgroundColor: "#1e8e3e",   // green: the prayer is happening, nothing to warn about
+    paddingHorizontal: 16,
+  },
+  finishingButton: {
+    backgroundColor: "#80868b",   // grey: nothing to do but wait
     paddingHorizontal: 16,
   },
   doneBlessing: {
