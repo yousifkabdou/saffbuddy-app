@@ -11,8 +11,7 @@ security. UI styling is the one exception (see "Ownership" below).
 
 **Override:** If my message contains "ARISE" in all caps, Claude sets aside
 any limit in this file that holds me back for that message only. This includes
-the ownership tiers (so Claude may write tier-1 code) and the "ask questions
-first" rule. Claude does what I asked and says in one line which rule it set
+the ownership tiers and the "ask questions first" rule. Claude does what I asked and says in one line which rule it set
 aside. Lowercase "arise" doesn't count. The next message goes back to the
 normal rules.
 
@@ -30,23 +29,36 @@ normal rules.
   not a line-by-line restatement.
 - Skip style and grammar nitpicks. Focus on things that affect how the code works.
 
+## Time and value
+
+My time is limited, and this project exists to make me a strong SWE intern
+candidate (and later ML/AI). Before asking me to do something by hand, check
+whether it builds a skill that matters for that:
+
+- Worth my time: the security model, data modeling, state/effects/async,
+  testing, debugging, Git workflow, and anything an interviewer would
+  plausibly ask about.
+- Not worth my time: tool-specific setup and config, styling, build errors,
+  library quirks, boilerplate, and one-off plumbing. Just do these and tell me
+  in one line what you did.
+
+If you're unsure which category something is in, say so in one sentence and
+recommend one. Don't make me hand-write something just because I could.
+
 ## Ownership
 
 There are three tiers. When a task spans more than one, split it and say which
 part falls in which tier.
 
-1. **I write it; Claude reviews it.** Authentication, gender separation,
-   invite/vouching logic, and access control: Row Level Security policies,
-   column-level grants, `security definer` functions, and the app code that
-   handles the logged-in user and inserts their data. Also the assertions in
-   tests for any of these. Claude may explain
-   concepts, point to docs, give hints, and review my code, but never writes
-   this code for me, even if I ask in a hurry. If I ask, remind me of this rule.
-   - **Exception: SQL Editor checks for RLS.** Claude may write and run these
-     checks, but I must first write down my predicted result for each one (pass,
-     or which error), and Claude shows me my predictions next to the actual
-     results. Every check runs inside `begin … rollback`, and Claude shows me
-     each block before running it against the live database.
+1. **Security: Claude implements, I understand.** Authentication, gender
+   separation, invite/vouching logic, RLS policies, column grants, and
+   `security definer` functions. I'm still learning this, so don't assume I
+   know the right approach. Propose the design first and explain it in plain
+   terms, then implement it. Every security change must come with tests that
+   prove the rule holds, including the negative case (e.g. a user of the other
+   gender gets zero rows; an anonymous user can't read identifying columns).
+   Before committing, I must be able to explain the rule, why it exists, and
+   what the tests prove. Quiz me on that, not on syntax.
 2. **I design it; Claude writes it.** Features and how they behave. I decide
    what happens and roughly how; Claude implements it. I must be able to
    explain and debug it, and rewrite a small piece without help.
@@ -79,7 +91,8 @@ part falls in which tier.
 ## Commits and the quiz
 
 - The quiz is optional: only quiz me when I ask for it. Don't block or delay a
-  commit or push because there was no quiz.
+  commit or push because there was no quiz. Exception: security changes need
+  the tier-1 quiz before committing (see "Ownership").
 - When I do ask, have me explain what the code does and why, in my own words,
   until my explanation would hold up if an interviewer asked about it. If it's
   vague or wrong, point out the gap and ask again; don't just give me the answer.
