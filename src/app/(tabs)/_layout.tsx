@@ -68,6 +68,10 @@ export default function TabsLayout() {
         title: "Home",
         tabBarIcon: ({ focused }) => <TabCircle icon="home" focused={focused} />,
       }} />
+      <Tabs.Screen name="requests" options={{
+        title: "Requests",
+        tabBarIcon: ({ focused }) => <TabCircle icon="people" focused={focused} />,
+      }} />
       <Tabs.Screen name="times" options={{
         title: "Prayer Times",
         tabBarIcon: ({ focused }) => <TabCircle icon="time" focused={focused} />,
@@ -79,7 +83,7 @@ export default function TabsLayout() {
 }
 
 // A round tab button: black when its tab is open, white otherwise.
-function TabCircle({ icon, focused }: { icon: "home" | "time"; focused: boolean }) {
+function TabCircle({ icon, focused }: { icon: "home" | "people" | "time"; focused: boolean }) {
   return (
     <View style={[styles.circle, focused && styles.circleFocused]}>
       <Ionicons name={icon} size={24} color={focused ? "white" : "black"} />

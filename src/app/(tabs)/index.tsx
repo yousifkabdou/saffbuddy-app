@@ -1,10 +1,12 @@
 import { useSharedRequests } from "@/context/RequestsContext";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { Room } from "@/data/room";
+import { openDirections } from "@/lib/directions";
 import { formatTime, freeAgainAt, isExpired, isInProgress } from "@/lib/requestTime";
 import { otherPerson } from "@/lib/wording";
 import { useBottomTabBarHeight } from "expo-router/js-tabs";
-import { useRef, useState } from "react";
-import { Alert, Linking, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import MapView, { MapMarker, Marker } from "react-native-maps";
 
 // Start time choices, in minutes from now. No "Now": a request needs a few minutes
@@ -12,33 +14,17 @@ import MapView, { MapMarker, Marker } from "react-native-maps";
 // start times 5-45 minutes ahead (with 1 min slack), so keep these in sync.
 const START_OFFSETS = [5, 10, 15, 30, 45];
 
-// Opens walking directions to a room in the user's map app.
-// iOS asks Apple Maps or Google Maps; Android goes straight to Google Maps.
-function openDirections(room: Room) {
-  const destination = `${room.latitude},${room.longitude}`;
-  const appleUrl = `https://maps.apple.com/?daddr=${destination}&dirflg=w`;
-  const googleUrl = `https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=walking`;
-
-  if (Platform.OS === "ios") {
-    Alert.alert("Directions", "Open in:", [
-      { text: "Apple Maps", onPress: () => Linking.openURL(appleUrl) },
-      { text: "Google Maps", onPress: () => Linking.openURL(googleUrl) },
-      { text: "Cancel", style: "cancel" },
-    ]);
-  } else {
-    Linking.openURL(googleUrl);
-  }
-}
-
 export default function Index() {
   const [selectedRoom, setSelectedRoom] = useState<null | Room>(null);
   const tabBarHeight = useBottomTabBarHeight(); // the tab bar floats over the screen, so the panel needs room for it
   const markerRefs = useRef<Record<string, MapMarker | null>>({}); // each room's marker, by room id
+  const mapRef = useRef<MapView | null>(null); // the map itself, so code can move it
   // Request data, the clock and Done live in RequestsProvider (tabs layout) so every tab shares one copy.
   const {
     rooms, gender, now, requests, myRequestId, myJoinedId, counts, setDoneId,
     myRequestRoom, myJoinedRoom, activeRequestRow, activeJoinedRow, finishingRow,
     handleJoin, postRequest, cancelRequest, leaveRequest, loadRequests, loadJoins,
+    openRoomId, setOpenRoomId,
   } = useSharedRequests();
   const [requestsOpen, setRequestsOpen] = useState(false); // true = the panel shows this room's request list
   const [panelMode, setPanelMode] = useState<"buttons" | "picker" | "cancel" | "leave">("buttons");
@@ -67,10 +53,27 @@ export default function Index() {
     setRequestsOpen(false);
   };
 
+  // Another tab asked to open a room (Requests tab → tap an empty room). Runs when openRoomId
+  // changes, and again when rooms load, in case the request came before the rooms were loaded.
+  useEffect(() => {
+    if (!openRoomId) return;
+    const room = rooms.find((r) => r.id === openRoomId);
+    if (!room) return; // rooms not loaded yet; this effect runs again when they are
+    openPanel(room);
+    // Move the map to the room. The centre sits a bit south of it, so the pin
+    // shows above the panel instead of behind it.
+    mapRef.current?.animateToRegion(
+      { latitude: room.latitude - 0.0015, longitude: room.longitude, latitudeDelta: 0.006, longitudeDelta: 0.006 },
+      400,
+    );
+    setOpenRoomId(null); // handled: clear it so it doesn't reopen next time the map renders
+  }, [openRoomId, rooms]);
+
   return (
 
     <View style={styles.container}>
       <MapView style={styles.map}
+      ref={mapRef}
       initialRegion={{
         latitude: 40.000632,
         longitude: -83.013325,
@@ -186,7 +189,7 @@ export default function Index() {
         :
         <View style={styles.actions}>
           <Pressable style={styles.directionsButton} onPress={() => openDirections(selectedRoom)}>
-            <Text style={styles.directionsText}>➤</Text>
+            <Ionicons name="location" size={24} color="#1a73e8" />
           </Pressable>
           {/* Once a request is in progress, the prayer is happening: "Done" ends it with no warning.
               Done only hides it here; deleting would lose it from the tally. */}
@@ -368,9 +371,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginRight: 12,
-  },
-  directionsText: {
-    fontSize: 20,
   },
   requestButton: {
     flex: 1,                // stretch across the rest of the row

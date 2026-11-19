@@ -18,6 +18,9 @@ function useSharedRequestsState() {
   // The request the user tapped Done on. Done deletes nothing: the server deletes the request
   // later and counts it in the tally (docs/adr/0001), so this only hides it on this phone.
   const [doneId, setDoneId] = useState<string | null>(null);
+  // A room another tab wants the map to open. The map opens its panel, then sets this back to null,
+  // so it acts like a one-time message instead of something that sticks to the screen.
+  const [openRoomId, setOpenRoomId] = useState<string | null>(null);
 
   // Re-render every 30 seconds so rows switch to "In progress" and expired ones disappear
   // without a reload. The cleanup stops the timer when the provider unmounts (sign out).
@@ -92,7 +95,7 @@ function useSharedRequestsState() {
 
   return {
     ...requestsState,
-    rooms, gender, now, doneId, setDoneId,
+    rooms, gender, now, doneId, setDoneId, openRoomId, setOpenRoomId,
     myRequestRoom, myJoinedRoom, activeRequestRow, activeJoinedRow, finishingRow,
     handleJoin,
   };
