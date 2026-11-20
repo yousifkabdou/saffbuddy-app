@@ -1,4 +1,6 @@
 import { PrayerRequest } from "@/data/request";
+import { AppError, RequestAction } from "@/lib/errors";
+import { isOffline, OFFLINE_ERROR } from "@/lib/network";
 import { supabase } from "@/lib/supabase";
 import { RealtimeChannel } from "@supabase/supabase-js";
 import { useEffect, useRef, useState } from "react";
@@ -11,11 +13,19 @@ const PING_DEBOUNCE_MS = 300;
 // Request data and actions, shared by any screen that shows requests.
 // Panel/UI state (which room is open, picker vs. confirm) stays in the screen.
 // gender picks the live-update channel; null until the screen has loaded it.
-export function useRequests(gender: "Men" | "Women" | null) {
+// onActionError is called when post/join/leave/cancel fails, so the caller can tell the user.
+export function useRequests(
+  gender: "Men" | "Women" | null,
+  onActionError: (action: RequestAction, error: AppError) => void,
+) {
   const [myRequestId, setMyRequestId] = useState<null | string>(null);
   const [myJoinedId, setMyJoinedId ] = useState<string | null>(null);
   const [requests, setRequests] = useState<PrayerRequest[]>([]); // every request RLS lets us see, all rooms
   const [counts, setCounts] = useState<Record<string, number>>({}); // joiner count by request id; missing = 0
+  // Whether the latest load failed. The screens show a retry banner while either is true,
+  // and the next successful load (a retry, a live-update ping, the app reopening) clears it.
+  const [requestsFailed, setRequestsFailed] = useState(false);
+  const [joinsFailed, setJoinsFailed] = useState(false);
 
   // Each load takes a number; after every await it checks it's still the newest call.
   // If two loads overlap, the older one stops instead of overwriting newer data.
@@ -31,6 +41,7 @@ export function useRequests(gender: "Men" | "Women" | null) {
     if (call !== requestsCall.current) return; // a newer load started; let it win
     if (error) {
       console.log(error.message);
+      setRequestsFailed(true); // keep showing the last list we had, plus the banner
       return;
     }
     setRequests(data);
@@ -38,9 +49,11 @@ export function useRequests(gender: "Men" | "Women" | null) {
     if (call !== requestsCall.current) return;
     if(myRequestError){
       console.log(myRequestError.message);
+      setRequestsFailed(true);
       return;
     }
     setMyRequestId(myRequestData);
+    setRequestsFailed(false); // both parts loaded
   };
 
   // Load join data: how many joined each request, and which request (if any) the user joined.
@@ -55,6 +68,7 @@ export function useRequests(gender: "Men" | "Women" | null) {
     if (call !== joinsCall.current) return; // a newer load started; let it win
     if (countError) {
       console.log(countError.message);
+      setJoinsFailed(true);
     } else {
       setCounts(Object.fromEntries(countData.map((row: { request_id: string; count: number }) => [row.request_id, row.count])));
     }
@@ -63,51 +77,61 @@ export function useRequests(gender: "Men" | "Women" | null) {
     if (call !== joinsCall.current) return;
     if (joinersError){
       console.log(joinersError.message);
+      setJoinsFailed(true);
       return;
     }
     setMyJoinedId(joinersData);
+    if (!countError) setJoinsFailed(false); // both parts loaded
   };
 
   // Called with the room to post in and one of START_OFFSETS.
+  // Uses the gender this hook was given instead of fetching it again: one network round trip
+  // instead of two. The insert policy still checks it against the user's profile, so it can't be faked.
   const postRequest = async (roomID: string, minutes: number) => {
+    if (await isOffline()) return onActionError("post", OFFLINE_ERROR); // fail fast instead of waiting on a doomed fetch
     const {data} = await supabase.auth.getSession();
     const userId = data.session?.user.id;
-    const {data: userGender} = await supabase.from('profiles').select('gender').eq('id', userId).maybeSingle();
-    const {error} = await supabase.from("requests").insert({room_id: roomID, requester: userId, gender: userGender?.gender, start_time: new Date(Date.now() + minutes * 60 * 1000).toISOString()})
+    const {error} = await supabase.from("requests").insert({room_id: roomID, requester: userId, gender, start_time: new Date(Date.now() + minutes * 60 * 1000).toISOString()})
 
     if (error){
       console.log(error.message);
+      onActionError("post", error);
     }
-    loadRequests(); // refresh the list so the new request shows up
+    loadRequests(); // refresh the list so the new request shows up (or, on failure, shows why it didn't)
   };
 
   const joinRequest = async (requestId : string) => {
+    if (await isOffline()) return onActionError("join", OFFLINE_ERROR);
     const {data} = await supabase.auth.getSession();
     const userId = data.session?.user.id; 
     const {error: insertError } = await supabase.from("joiners").insert({member: userId, request_id: requestId});
     if (insertError){
       console.log(insertError.message);
-      
+      onActionError("join", insertError);
     }
     loadJoins();
   }
 
   const leaveRequest  = async() => {
+    if (await isOffline()) return onActionError("leave", OFFLINE_ERROR);
     const {data} = await supabase.auth.getSession();
     const userId = data.session?.user.id; 
     const {error: leaveError} = await supabase.from("joiners").delete().eq("member", userId);
     
     if (leaveError){
       console.log(leaveError.message);
+      onActionError("leave", leaveError);
       return;
     }
     loadJoins();
   }
   // Deletes the user's own request.
   const cancelRequest = async () => {
+    if (await isOffline()) return onActionError("cancel", OFFLINE_ERROR);
     const{error} = await supabase.from("requests").delete().eq("id", myRequestId);
     if (error){
       console.log(error.message);
+      onActionError("cancel", error);
       return;
     }
     setMyRequestId(null);
@@ -171,5 +195,5 @@ export function useRequests(gender: "Men" | "Women" | null) {
     };
   }, [gender]);
 
-  return {myJoinedId, requests, myRequestId, counts, leaveRequest, joinRequest, loadRequests, loadJoins, postRequest, cancelRequest };
+  return {myJoinedId, requests, myRequestId, counts, requestsFailed, joinsFailed, leaveRequest, joinRequest, loadRequests, loadJoins, postRequest, cancelRequest };
 }

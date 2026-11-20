@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase"; //My login source
 import { useEffect, useState } from "react"; //useEffect executes a code once after the screen is drawn, useState stores a value that survives redraws
 import { Session } from "@supabase/supabase-js";
 import { RequestsProvider } from "@/context/RequestsContext";
+import StatusOverlay from "@/components/StatusOverlay";
 export default function TabsLayout() {
 
   const [session, setSession] = useState<Session | null>(null); //current session info can only be Session or null, setSession to change it
@@ -59,7 +60,9 @@ export default function TabsLayout() {
 
     // RequestsProvider loads request data once, here, so every tab below shares the same copy.
     // It's inside this branch so it only mounts once there's a session and a profile.
+    // StatusOverlay sits on top of the tabs and shows load/action errors on any tab.
     return <RequestsProvider>
+    <View style={{ flex: 1 }}>
     <Tabs screenOptions={{
       tabBarStyle: styles.tabBar,
       tabBarShowLabel: false,
@@ -77,6 +80,8 @@ export default function TabsLayout() {
         tabBarIcon: ({ focused }) => <TabCircle icon="time" focused={focused} />,
       }} />
     </Tabs>
+    <StatusOverlay />
+    </View>
     </RequestsProvider>;
 
   }
