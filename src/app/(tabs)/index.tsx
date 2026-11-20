@@ -1,11 +1,13 @@
+import { useSharedRequests } from "@/context/RequestsContext";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { Room } from "@/data/room";
-import { useRequests } from "@/hooks/useRequests";
-import { supabase } from "@/lib/supabase";
-import { freeAgainAt, isExpired, isInProgress } from "@/lib/requestTime";
+import { openDirections } from "@/lib/directions";
+import { formatTime, freeAgainAt, isExpired, isInProgress } from "@/lib/requestTime";
 import { otherPerson } from "@/lib/wording";
+import { useRouter } from "expo-router";
 import { useBottomTabBarHeight } from "expo-router/js-tabs";
 import { useEffect, useRef, useState } from "react";
-import { Alert, Linking, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import MapView, { MapMarker, Marker } from "react-native-maps";
 
 // Start time choices, in minutes from now. No "Now": a request needs a few minutes
@@ -13,99 +15,35 @@ import MapView, { MapMarker, Marker } from "react-native-maps";
 // start times 5-45 minutes ahead (with 1 min slack), so keep these in sync.
 const START_OFFSETS = [5, 10, 15, 30, 45];
 
-// Opens walking directions to a room in the user's map app.
-// iOS asks Apple Maps or Google Maps; Android goes straight to Google Maps.
-function openDirections(room: Room) {
-  const destination = `${room.latitude},${room.longitude}`;
-  const appleUrl = `https://maps.apple.com/?daddr=${destination}&dirflg=w`;
-  const googleUrl = `https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=walking`;
-
-  if (Platform.OS === "ios") {
-    Alert.alert("Directions", "Open in:", [
-      { text: "Apple Maps", onPress: () => Linking.openURL(appleUrl) },
-      { text: "Google Maps", onPress: () => Linking.openURL(googleUrl) },
-      { text: "Cancel", style: "cancel" },
-    ]);
-  } else {
-    Linking.openURL(googleUrl);
-  }
-}
-
-// "2026-11-11T18:02:00Z" -> "1:02 PM" in the phone's time zone.
-function formatTime(isoTime: string) {
-  return new Date(isoTime).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-}
+// After a marker tap, how long a selection of a *different* marker is treated as Apple Maps noise.
+const TAP_WINS_MS = 500;
 
 export default function Index() {
-  const [rooms, setRooms] = useState<Room[]>([]); // empty until Supabase answers, so the map shows with no markers at first
   const [selectedRoom, setSelectedRoom] = useState<null | Room>(null);
   const tabBarHeight = useBottomTabBarHeight(); // the tab bar floats over the screen, so the panel needs room for it
   const markerRefs = useRef<Record<string, MapMarker | null>>({}); // each room's marker, by room id
-  const [gender, setGender] = useState<"Men"|"Women"|null>(null);
-  // gender (loaded below from profiles) picks the live-update channel
-  const { requests, myRequestId, myJoinedId, counts, postRequest, cancelRequest, joinRequest, leaveRequest, loadRequests, loadJoins } = useRequests(gender);
-  const [requestsOpen, setRequestsOpen] = useState(false); // true = the panel shows this room's request list
+  const mapRef = useRef<MapView | null>(null); // the map itself, so code can move it
+  // The last marker the user actually tapped, and when. A ref: it only guides onSelect, nothing renders from it.
+  const lastPress = useRef<{ roomId: string; at: number } | null>(null);
+  // Request data, the clock and Done live in RequestsProvider (tabs layout) so every tab shares one copy.
+  const {
+    rooms, gender, now, requests, counts, setDoneId,
+    myRequestRoom, myJoinedRoom, activeRequestRow, activeJoinedRow, finishingRow,
+    postRequest, cancelRequest, leaveRequest, loadRequests, loadJoins,
+    openRoomId, setOpenRoomId, setFocusRoomId,
+  } = useSharedRequests();
+  const router = useRouter();
   const [panelMode, setPanelMode] = useState<"buttons" | "picker" | "cancel" | "leave">("buttons");
-  const [now, setNow] = useState(Date.now()); // the clock, refreshed every 30s so time-based UI updates on its own
-  // The request the user tapped Done on. Done deletes nothing: the server deletes the request
-  // later and counts it in the tally (docs/adr/0001), so this only hides it on this phone.
-  const [doneId, setDoneId] = useState<string | null>(null);
 
-  // Re-render every 30 seconds so rows switch to "In progress" and expired ones disappear
-  // without a reload. The cleanup stops the timer when the screen unmounts.
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 30 * 1000);
-    return () => clearInterval(timer);
-  }, []);
+  // Whether the selected room has any requests that haven't expired, for the "Check current requests" link.
+  // Checked against the clock (not just the list) so the link disappears once the last one expires.
+  const roomHasRequests = selectedRoom !== null &&
+    requests.some((r) => r.room_id === selectedRoom.id && !isExpired(r.start_time, now));
 
-  // Only the selected room's requests that haven't expired. Filtered here (not in loadRequests)
-  // so a request that expires while the screen is open disappears on the next tick.
-  // Already sorted by start time (see loadRequests).
-  const roomRequests = selectedRoom
-    ? requests.filter((r) => r.room_id === selectedRoom.id && !isExpired(r.start_time, now))
-    : [];
-
-  // The user's own request and its room, for the red Cancel button. undefined if they have none
-  // (or if myRequestId is stale and that row is no longer in the list).
-  const myRequestRow = requests.find((r) => r.id === myRequestId);
-  const myRequestRoom = rooms.find((room) => room.id === myRequestRow?.room_id);
-
-  // Same idea for the request the user joined, for the "Joined" label and the blocked-Join alert.
-  const myJoinedRow = requests.find((r) => r.id === myJoinedId);
-  const myJoinedRoom = rooms.find((room) => room.id === myJoinedRow?.room_id);
-
-  // The rows the user is still "in": not tapped Done and not expired. undefined otherwise.
-  const isFinished = (row: { id: string; start_time: string }) => row.id === doneId || isExpired(row.start_time, now);
-  const activeRequestRow = myRequestRow && !isFinished(myRequestRow) ? myRequestRow : undefined;
-  const activeJoinedRow = myJoinedRow && !isFinished(myJoinedRow) ? myJoinedRow : undefined;
-
-  // Finished but not yet deleted by the server. Until then the database still sees the user
-  // in it, so posting or joining would be refused.
-  const finishingRow = (!activeRequestRow && myRequestRow) || (!activeJoinedRow && myJoinedRow) || undefined;
-
-  // Join tapped on a row. A user can be in only one request, so if they already are,
-  // tell them what to do instead of sending an insert the database would refuse anyway.
-  const handleJoin = (requestId: string) => {
-    if (activeRequestRow) {
-      Alert.alert("You already have a request", `Cancel your ${formatTime(activeRequestRow.start_time)} request at ${myRequestRoom?.building} first.`);
-      return;
-    }
-    if (activeJoinedRow) {
-      Alert.alert("You already joined a request", `Leave the ${formatTime(activeJoinedRow.start_time)} request at ${myJoinedRoom?.building} first.`);
-      return;
-    }
-    if (finishingRow) {
-      Alert.alert("Finishing up your last prayer", `You can join again from ${formatTime(freeAgainAt(finishingRow.start_time))}.`);
-      return;
-    }
-    joinRequest(requestId);
-  };
-
-  // Open a room's panel with the picker, list and confirm closed, so they don't carry over from the last room.
+  // Open a room's panel with the picker and confirm closed, so they don't carry over from the last room.
   const openPanel = (room: Room) => {
     setPanelMode("buttons");
     setSelectedRoom(room);
-    setRequestsOpen(false);
   };
 
   // Close the panel and deselect the marker right away. Otherwise Apple Maps keeps
@@ -115,41 +53,29 @@ export default function Index() {
       markerRefs.current[selectedRoom.id]?.hideCallout();
     }
     setSelectedRoom(null);
-    setRequestsOpen(false);
   };
 
-  // Load the rooms once when the map opens. RLS decides which rooms come back
-  // (shared rooms plus the viewer's own gender's rooms).
+  // Another tab asked to open a room (Requests tab → tap an empty room). Runs when openRoomId
+  // changes, and again when rooms load, in case the request came before the rooms were loaded.
   useEffect(() => {
-    const loadRooms = async () => {
-      const { data, error } = await supabase.from("rooms").select("*");
-      if (error) {
-        console.log(error.message);
-        return;
-      }
-      setRooms(data);
-    };
-    loadRooms();
-  }, []);
-
-  useEffect( () =>{
-    const getGender = async () => {
-      const {data: sessionData} = await supabase.auth.getSession();
-      const userID = sessionData.session?.user.id;
-      const {data, error} = await supabase.from("profiles").select("gender").eq("id", userID).maybeSingle();
-      if (error){
-        console.log(error.message);
-        return;
-      }
-      setGender(data?.gender??null);
-    };
-    getGender();
-  }, []);
+    if (!openRoomId) return;
+    const room = rooms.find((r) => r.id === openRoomId);
+    if (!room) return; // rooms not loaded yet; this effect runs again when they are
+    openPanel(room);
+    // Move the map to the room. The centre sits a bit south of it, so the pin
+    // shows above the panel instead of behind it.
+    mapRef.current?.animateToRegion(
+      { latitude: room.latitude - 0.0015, longitude: room.longitude, latitudeDelta: 0.006, longitudeDelta: 0.006 },
+      400,
+    );
+    setOpenRoomId(null); // handled: clear it so it doesn't reopen next time the map renders
+  }, [openRoomId, rooms]);
 
   return (
 
     <View style={styles.container}>
       <MapView style={styles.map}
+      ref={mapRef}
       initialRegion={{
         latitude: 40.000632,
         longitude: -83.013325,
@@ -167,10 +93,23 @@ export default function Index() {
       ref={(marker) => { markerRefs.current[room.id] = marker; }}
       coordinate =
       {{latitude: room.latitude, longitude: room.longitude }}
-      onPress={ () => openPanel(room)}
+      onPress={ () => {
+        lastPress.current = { roomId: room.id, at: Date.now() };
+        openPanel(room);
+      }}
       // After a map tap closes the panel, Apple Maps selects the next marker
       // without firing onPress, so open the panel on select too.
-      onSelect={ () => openPanel(room)}/>
+      onSelect={ () => {
+        // Zoomed out, Apple Maps sometimes selects a nearby marker right after the tapped one,
+        // with no tap behind it. A tap wins for a moment: ignore a different room selected just after.
+        const press = lastPress.current;
+        if (press && press.roomId !== room.id && Date.now() - press.at < TAP_WINS_MS) {
+          // Deselect it too, or Apple Maps keeps it selected and ignores the next real tap on it.
+          markerRefs.current[room.id]?.hideCallout();
+          return;
+        }
+        openPanel(room);
+      }}/>
     ))}
       </MapView>
       {selectedRoom &&
@@ -190,34 +129,12 @@ export default function Index() {
           <Text style={styles.description}>
             { `${selectedRoom.floor}, Room ${selectedRoom.room_num}`}
           </Text>
-          {roomRequests.length > 0 &&
-          <Pressable onPress={() => setRequestsOpen(!requestsOpen)}>
-            <Text style={styles.requestsLink}>
-              {requestsOpen ? "Hide requests" : "Check current requests"}
-            </Text>
+          {/* Joining happens in the Requests tab: this jumps there and scrolls to this room. */}
+          {roomHasRequests &&
+          <Pressable onPress={() => { setFocusRoomId(selectedRoom.id); router.navigate("/requests"); }}>
+            <Text style={styles.requestsLink}>Check current requests</Text>
           </Pressable>}
         </View>
-
-        {requestsOpen && roomRequests.map((request) => (
-          <View key={request.id} style={styles.requestRow}>
-            <Text style={styles.requestTime}>
-              {request.id === myRequestId && <Text style={styles.yoursLabel}>Yours · </Text>}
-              {request.id === myJoinedId && <Text style={styles.yoursLabel}>Joined · </Text>}
-              {formatTime(request.start_time)}
-            </Text>
-            <View style={styles.rowRight}>
-              {/* counts holds joiners only; + 1 adds the requester */}
-              <Text style={styles.joinCount}>Total members: {(counts[request.id] ?? 0) + 1}</Text>
-              {/* Past the join cutoff nobody can join (the joiners insert policy refuses it too) */}
-              {isInProgress(request.start_time, now) ?
-              <Text style={styles.inProgressText}>In progress</Text>
-              : request.id !== myRequestId && request.id !== myJoinedId &&
-              <Pressable style={styles.joinButton} onPress={() => handleJoin(request.id)}>
-                <Text style={styles.joinText}>Join</Text>
-              </Pressable>}
-            </View>
-          </View>
-        ))}
 
         {panelMode === "cancel" ?
         <View style={styles.actions}>
@@ -265,7 +182,7 @@ export default function Index() {
         :
         <View style={styles.actions}>
           <Pressable style={styles.directionsButton} onPress={() => openDirections(selectedRoom)}>
-            <Text style={styles.directionsText}>➤</Text>
+            <Ionicons name="location" size={24} color="#1a73e8" />
           </Pressable>
           {/* Once a request is in progress, the prayer is happening: "Done" ends it with no warning.
               Done only hides it here; deleting would lose it from the tally. */}
@@ -400,38 +317,6 @@ const styles = StyleSheet.create({
     color: "#1a73e8",
     fontWeight: "bold",
   },
-  requestRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#eee",
-  },
-  requestTime: {
-    fontSize: 16,
-  },
-  yoursLabel: {
-    fontWeight: "bold",
-  },
-  joinCount: {
-    color: "gray",
-  },
-  rowRight: {
-    flexDirection: "row",   // count and Join button side by side
-    alignItems: "center",
-  },
-  joinButton: {
-    marginLeft: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: "black",
-  },
-  joinText: {
-    color: "white",
-    fontWeight: "bold",
-  },
   actions: {
     flexDirection: "row",
     alignItems: "center",
@@ -447,9 +332,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginRight: 12,
-  },
-  directionsText: {
-    fontSize: 20,
   },
   requestButton: {
     flex: 1,                // stretch across the rest of the row
@@ -505,11 +387,6 @@ const styles = StyleSheet.create({
   },
   doneBlessing: {
     fontWeight: "normal",
-  },
-  inProgressText: {
-    color: "#1e8e3e",
-    fontWeight: "bold",
-    marginLeft: 12,
   },
   cancelTitle: {
     color: "white",

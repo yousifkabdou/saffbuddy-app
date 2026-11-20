@@ -14,6 +14,11 @@ export const SERVER_DELETE_MINUTES = 17;
 
 const MINUTE = 60 * 1000;
 
+// "2026-11-11T18:02:00Z" -> "1:02 PM" in the phone's time zone.
+export function formatTime(isoTime: string) {
+  return new Date(isoTime).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
 // When the user is free to post or join again: the server deletes at
 // SERVER_DELETE_MINUTES, and the job runs once a minute, so allow 1 more.
 export function freeAgainAt(startTime: string) {

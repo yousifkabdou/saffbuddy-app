@@ -5,6 +5,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { supabase } from "@/lib/supabase"; //My login source
 import { useEffect, useState } from "react"; //useEffect executes a code once after the screen is drawn, useState stores a value that survives redraws
 import { Session } from "@supabase/supabase-js";
+import { RequestsProvider } from "@/context/RequestsContext";
 export default function TabsLayout() {
 
   const [session, setSession] = useState<Session | null>(null); //current session info can only be Session or null, setSession to change it
@@ -56,7 +57,10 @@ export default function TabsLayout() {
   }
   else {
 
-    return <Tabs screenOptions={{
+    // RequestsProvider loads request data once, here, so every tab below shares the same copy.
+    // It's inside this branch so it only mounts once there's a session and a profile.
+    return <RequestsProvider>
+    <Tabs screenOptions={{
       tabBarStyle: styles.tabBar,
       tabBarShowLabel: false,
     }}>
@@ -64,17 +68,22 @@ export default function TabsLayout() {
         title: "Home",
         tabBarIcon: ({ focused }) => <TabCircle icon="home" focused={focused} />,
       }} />
+      <Tabs.Screen name="requests" options={{
+        title: "Requests",
+        tabBarIcon: ({ focused }) => <TabCircle icon="people" focused={focused} />,
+      }} />
       <Tabs.Screen name="times" options={{
         title: "Prayer Times",
         tabBarIcon: ({ focused }) => <TabCircle icon="time" focused={focused} />,
       }} />
-    </Tabs>;
+    </Tabs>
+    </RequestsProvider>;
 
   }
 }
 
 // A round tab button: black when its tab is open, white otherwise.
-function TabCircle({ icon, focused }: { icon: "home" | "time"; focused: boolean }) {
+function TabCircle({ icon, focused }: { icon: "home" | "people" | "time"; focused: boolean }) {
   return (
     <View style={[styles.circle, focused && styles.circleFocused]}>
       <Ionicons name={icon} size={24} color={focused ? "white" : "black"} />
