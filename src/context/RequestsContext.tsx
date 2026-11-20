@@ -21,6 +21,8 @@ function useSharedRequestsState() {
   // A room another tab wants the map to open. The map opens its panel, then sets this back to null,
   // so it acts like a one-time message instead of something that sticks to the screen.
   const [openRoomId, setOpenRoomId] = useState<string | null>(null);
+  // The other direction: a room the map wants the Requests tab to scroll to. Same one-time idea.
+  const [focusRoomId, setFocusRoomId] = useState<string | null>(null);
 
   // Re-render every 30 seconds so rows switch to "In progress" and expired ones disappear
   // without a reload. The cleanup stops the timer when the provider unmounts (sign out).
@@ -95,7 +97,7 @@ function useSharedRequestsState() {
 
   return {
     ...requestsState,
-    rooms, gender, now, doneId, setDoneId, openRoomId, setOpenRoomId,
+    rooms, gender, now, doneId, setDoneId, openRoomId, setOpenRoomId, focusRoomId, setFocusRoomId,
     myRequestRoom, myJoinedRoom, activeRequestRow, activeJoinedRow, finishingRow,
     handleJoin,
   };

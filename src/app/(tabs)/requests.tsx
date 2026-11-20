@@ -7,24 +7,41 @@ import { otherPerson } from "@/lib/wording";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useBottomTabBarHeight } from "expo-router/js-tabs";
-import { useCallback, useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Alert, Pressable, ScrollView, type ScrollViewInstance, StyleSheet, Text, View } from "react-native";
 
 // Every room the user can see, grouped with its requests, busiest room first (see sortRooms).
 export default function Requests() {
-  const { rooms, requests, now, setOpenRoomId } = useSharedRequests();
+  const { rooms, requests, now, setOpenRoomId, focusRoomId, setFocusRoomId } = useSharedRequests();
   const router = useRouter();
   const tabBarHeight = useBottomTabBarHeight(); // the tab bar floats over the screen
+  const scrollRef = useRef<ScrollViewInstance | null>(null); // the list itself, so code can scroll it
+  // Where each room's section starts inside the list (in px from the top), by room id.
+  // A ref, not state: it changes on every layout and nothing needs to re-render when it does.
+  const sectionY = useRef<Record<string, number>>({});
 
   // Rooms the user collapsed. We store the collapsed ones (not the open ones) so the default
   // is "open": a room that gets its first request while you're looking is open automatically.
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
-  // Each time this tab comes into focus, open every room again.
+  // Every time the user leaves this tab, open every room again, so it's reset when they come back.
+  // Resetting on leave (the cleanup) rather than on arrival means the layout is already final when
+  // the tab appears, so scrolling to a room from the map lands in the right place.
   // useCallback keeps the same function between renders; without it the effect would re-run every render.
   useFocusEffect(useCallback(() => {
-    setCollapsed(new Set());
+    return () => setCollapsed(new Set());
   }, []));
+
+  // Scroll to the room the map asked for (focusRoomId), then clear it so it only happens once.
+  // If that room hasn't been laid out yet (first visit to this tab), its onLayout below does it instead.
+  const scrollToFocusRoom = () => {
+    if (!focusRoomId) return;
+    const y = sectionY.current[focusRoomId];
+    if (y === undefined) return;
+    scrollRef.current?.scrollTo({ y, animated: true });
+    setFocusRoomId(null);
+  };
+  useEffect(scrollToFocusRoom, [focusRoomId]);
 
   // A Set is changed by making a new one: React only re-renders when state is a new object.
   const toggle = (roomId: string) => {
@@ -40,7 +57,7 @@ export default function Requests() {
   const anyRequests = groups.some((g) => g.requests.length > 0);
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={{ paddingBottom: tabBarHeight + 16 }}>
+    <ScrollView ref={scrollRef} style={styles.screen} contentContainerStyle={{ paddingBottom: tabBarHeight + 16 }}>
       {!anyRequests && rooms.length > 0 &&
       <Text style={styles.emptyAll}>No requests right now. Post one from a room on the map.</Text>}
 
@@ -55,6 +72,10 @@ export default function Requests() {
             setOpenRoomId(group.room.id);
             router.navigate("/");
           }}
+          onLayout={(y) => {
+            sectionY.current[group.room.id] = y;
+            if (group.room.id === focusRoomId) scrollToFocusRoom();
+          }}
         />
       ))}
     </ScrollView>
@@ -62,17 +83,18 @@ export default function Requests() {
 }
 
 // One room: a header like the map panel's, then its requests when open.
-function RoomSection({ group, open, onToggle, onOpenOnMap }: {
+function RoomSection({ group, open, onToggle, onOpenOnMap, onLayout }: {
   group: RoomGroup;
   open: boolean;
   onToggle: () => void;
   onOpenOnMap: () => void;
+  onLayout: (y: number) => void; // reports where this section starts in the list
 }) {
   const { room, requests } = group;
   const hasRequests = requests.length > 0;
 
   return (
-    <View style={styles.section}>
+    <View style={styles.section} onLayout={(e) => onLayout(e.nativeEvent.layout.y)}>
       {/* Rooms with requests collapse/expand. Empty rooms have no chevron; tapping opens the room on the map. */}
       <Pressable style={styles.header} onPress={hasRequests ? onToggle : onOpenOnMap}>
         <View style={styles.headerText}>
