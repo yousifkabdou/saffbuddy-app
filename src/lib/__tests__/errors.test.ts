@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@jest/globals";
-import { actionErrorMessage, isNetworkError } from "@/lib/errors";
+import { actionErrorMessage, isNetworkError, NOTHING_DELETED_ERROR } from "@/lib/errors";
 
 const NO_CONNECTION = "No connection. Check your internet and try again.";
 
@@ -45,5 +45,13 @@ describe("actionErrorMessage", () => {
     expect(actionErrorMessage("join", { code: "XX000", message: "" })).toBe("Couldn't join. Try again.");
     expect(actionErrorMessage("leave", { code: "42501", message: "" })).toBe("Couldn't leave the request. Try again.");
     expect(actionErrorMessage("cancel", { code: "42501", message: "" })).toBe("Couldn't cancel your request. Try again.");
+  });
+
+  it("leave/cancel: a delete that removed zero rows says it may have already ended", () => {
+    expect(actionErrorMessage("leave", NOTHING_DELETED_ERROR)).toMatch(/may have already ended/);
+    expect(actionErrorMessage("cancel", NOTHING_DELETED_ERROR)).toMatch(/may have already ended/);
+  });
+  it("NOTHING_DELETED is not mistaken for a network error", () => {
+    expect(isNetworkError(NOTHING_DELETED_ERROR)).toBe(false);
   });
 });

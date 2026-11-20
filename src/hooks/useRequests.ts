@@ -1,5 +1,5 @@
 import { PrayerRequest } from "@/data/request";
-import { AppError, RequestAction } from "@/lib/errors";
+import { AppError, NOTHING_DELETED_ERROR, RequestAction } from "@/lib/errors";
 import { isOffline, OFFLINE_ERROR } from "@/lib/network";
 import { supabase } from "@/lib/supabase";
 import { RealtimeChannel } from "@supabase/supabase-js";
@@ -116,22 +116,32 @@ export function useRequests(
     if (await isOffline()) return onActionError("leave", OFFLINE_ERROR);
     const {data} = await supabase.auth.getSession();
     const userId = data.session?.user.id; 
-    const {error: leaveError} = await supabase.from("joiners").delete().eq("member", userId);
-    
+    // .select() makes the delete return the rows it removed, so we can tell "deleted" from "deleted nothing".
+    const {data: leftRows, error: leaveError} = await supabase.from("joiners").delete().eq("member", userId).select("member");
+
     if (leaveError){
       console.log(leaveError.message);
       onActionError("leave", leaveError);
       return;
     }
+    // Zero rows: the join was already gone (request cancelled/expired) or a policy hid the row.
+    // Either way the user should know, and the refetch below shows the real state.
+    if (leftRows.length === 0) onActionError("leave", NOTHING_DELETED_ERROR);
     loadJoins();
   }
   // Deletes the user's own request.
   const cancelRequest = async () => {
     if (await isOffline()) return onActionError("cancel", OFFLINE_ERROR);
-    const{error} = await supabase.from("requests").delete().eq("id", myRequestId);
+    // Only ask for id back: requester is hidden by the column grant, so .select() with no columns would fail.
+    const{data: cancelledRows, error} = await supabase.from("requests").delete().eq("id", myRequestId).select("id");
     if (error){
       console.log(error.message);
       onActionError("cancel", error);
+      return;
+    }
+    if (cancelledRows.length === 0) {
+      onActionError("cancel", NOTHING_DELETED_ERROR);
+      loadRequests(); // resync: the rpc says whether we still have a request
       return;
     }
     setMyRequestId(null);
