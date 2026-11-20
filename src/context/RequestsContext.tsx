@@ -1,9 +1,14 @@
 import { Room } from "@/data/room";
 import { useRequests } from "@/hooks/useRequests";
+import { actionErrorMessage } from "@/lib/errors";
+import { isOffline } from "@/lib/network";
 import { formatTime, freeAgainAt, isExpired } from "@/lib/requestTime";
 import { supabase } from "@/lib/supabase";
-import { createContext, ReactNode, useContext, useEffect, useState } from "react";
+import { createContext, ReactNode, useContext, useEffect, useRef, useState } from "react";
 import { Alert } from "react-native";
+
+// How long a toast stays on screen.
+const TOAST_MS = 4000;
 
 // Everything about requests that more than one tab needs to agree on: the data, the clock,
 // what the user is in, and the actions. It lives once in the tabs layout and every tab
@@ -11,9 +16,30 @@ import { Alert } from "react-native";
 function useSharedRequestsState() {
   const [rooms, setRooms] = useState<Room[]>([]); // empty until Supabase answers
   const [gender, setGender] = useState<"Men" | "Women" | null>(null);
-  // gender (loaded below from profiles) picks the live-update channel
-  const requestsState = useRequests(gender);
-  const { requests, myRequestId, myJoinedId, joinRequest } = requestsState;
+  const [basicsFailed, setBasicsFailed] = useState(false); // loading rooms or gender failed
+
+  // The toast: a short message about an action that failed. It hides itself after TOAST_MS;
+  // a new message replaces the old one and restarts the timer.
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showToast = (message: string) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast(message);
+    toastTimer.current = setTimeout(() => setToast(null), TOAST_MS);
+  };
+  const hideToast = () => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast(null);
+  };
+  // Stop a pending timer if the provider unmounts (sign out), so it doesn't set state afterwards.
+  useEffect(() => () => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+  }, []);
+
+  // gender (loaded below from profiles) picks the live-update channel.
+  // A failed post/join/leave/cancel becomes a toast with a message for that action (src/lib/errors.ts).
+  const requestsState = useRequests(gender, (action, error) => showToast(actionErrorMessage(action, error)));
+  const { requests, myRequestId, myJoinedId, joinRequest, requestsFailed, joinsFailed, loadRequests, loadJoins } = requestsState;
   const [now, setNow] = useState(Date.now()); // the clock, refreshed every 30s so time-based UI updates on its own
   // The request the user tapped Done on. Done deletes nothing: the server deletes the request
   // later and counts it in the tally (docs/adr/0001), so this only hides it on this phone.
@@ -31,33 +57,41 @@ function useSharedRequestsState() {
     return () => clearInterval(timer);
   }, []);
 
-  // Load the rooms once. RLS decides which rooms come back
-  // (shared rooms plus the viewer's own gender's rooms).
+  // Load the rooms and the viewer's gender. RLS decides which rooms come back
+  // (shared rooms plus the viewer's own gender's rooms). Runs once on mount, and again on retry.
+  const loadBasics = async () => {
+    const roomsResult = await supabase.from("rooms").select("*");
+    if (roomsResult.error) console.log(roomsResult.error.message);
+    else setRooms(roomsResult.data);
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const userID = sessionData.session?.user.id;
+    const genderResult = await supabase.from("profiles").select("gender").eq("id", userID).maybeSingle();
+    if (genderResult.error) console.log(genderResult.error.message);
+    else setGender(genderResult.data?.gender ?? null);
+
+    setBasicsFailed(!!roomsResult.error || !!genderResult.error);
+  };
   useEffect(() => {
-    const loadRooms = async () => {
-      const { data, error } = await supabase.from("rooms").select("*");
-      if (error) {
-        console.log(error.message);
-        return;
-      }
-      setRooms(data);
-    };
-    loadRooms();
+    loadBasics();
   }, []);
 
-  useEffect(() => {
-    const getGender = async () => {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const userID = sessionData.session?.user.id;
-      const { data, error } = await supabase.from("profiles").select("gender").eq("id", userID).maybeSingle();
-      if (error) {
-        console.log(error.message);
-        return;
-      }
-      setGender(data?.gender ?? null);
-    };
-    getGender();
-  }, []);
+  // Any load failed: the screens show "Couldn't load · Tap to retry".
+  const loadFailed = basicsFailed || requestsFailed || joinsFailed;
+  // Retry tapped: load everything again. Each load clears its own flag when it succeeds.
+  // retrying drives the banner's spinner, so the user sees the attempt even when it fails again.
+  const [retrying, setRetrying] = useState(false);
+  const retryLoads = async () => {
+    if (retrying) return; // ignore extra taps while one retry is running
+    if (await isOffline()) {
+      showToast("Still offline. Check your connection and try again.");
+      return;
+    }
+    setRetrying(true);
+    // Promise.all waits for all three loads, which run at the same time.
+    await Promise.all([loadBasics(), loadRequests(), loadJoins()]);
+    setRetrying(false);
+  };
 
   // The user's own request and its room, for the red Cancel button. undefined if they have none
   // (or if myRequestId is stale and that row is no longer in the list).
@@ -97,7 +131,7 @@ function useSharedRequestsState() {
 
   return {
     ...requestsState,
-    rooms, gender, now, doneId, setDoneId, openRoomId, setOpenRoomId, focusRoomId, setFocusRoomId,
+    rooms, gender, now, doneId, setDoneId, toast, hideToast, loadFailed, retryLoads, retrying, openRoomId, setOpenRoomId, focusRoomId, setFocusRoomId,
     myRequestRoom, myJoinedRoom, activeRequestRow, activeJoinedRow, finishingRow,
     handleJoin,
   };

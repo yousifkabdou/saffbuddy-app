@@ -16,7 +16,7 @@ import MapView, { MapMarker, Marker } from "react-native-maps";
 const START_OFFSETS = [5, 10, 15, 30, 45];
 
 // After a marker tap, how long a selection of a *different* marker is treated as Apple Maps noise.
-const TAP_WINS_MS = 500;
+const TAP_WINS_MS = 1000;
 
 export default function Index() {
   const [selectedRoom, setSelectedRoom] = useState<null | Room>(null);
@@ -109,7 +109,16 @@ export default function Index() {
           return;
         }
         openPanel(room);
-      }}/>
+      }}
+      // A custom view as the child replaces Apple's default balloon, which has a grow-on-select
+      // animation (it visibly flashed when the TAP_WINS_MS guard deselected a stray marker).
+      // The view never changes, so tracksViewChanges={false} lets the map draw it once.
+      anchor={{ x: 0.5, y: 0.5 }}
+      tracksViewChanges={false}>
+        <View style={styles.marker}>
+          <Text style={styles.markerText}>🕌</Text>
+        </View>
+      </Marker>
     ))}
       </MapView>
       {selectedRoom &&
@@ -295,6 +304,23 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginRight: 16,
+  },
+  marker: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "white",
+    borderWidth: 2,
+    borderColor: "black",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "black",
+    shadowOpacity: 0.25,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+  },
+  markerText: {
+    fontSize: 18,
   },
   logoText: {
     fontSize: 32,
