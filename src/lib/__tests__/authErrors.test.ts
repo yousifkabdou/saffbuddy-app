@@ -77,3 +77,13 @@ describe("verifyCodeErrorMessage", () => {
       .toMatch(/Too many tries/);
   });
 });
+
+describe("auth messages: branches not covered above", () => {
+  it("asks for a valid email for either validation code", () => {
+    expect(sendCodeErrorMessage({ code: "email_address_invalid", message: "" })).toBe("Enter a valid email address.");
+    expect(sendCodeErrorMessage({ code: "validation_failed", message: "" })).toBe("Enter a valid email address.");
+  });
+  it("falls back to a generic message for an unknown verify error", () => {
+    expect(verifyCodeErrorMessage({ code: "unexpected_failure", message: "boom" })).toBe("Couldn't verify the code. Try again.");
+  });
+});

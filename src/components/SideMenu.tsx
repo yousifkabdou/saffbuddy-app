@@ -4,12 +4,17 @@ import { colors } from "@/theme";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { GlassView } from "expo-glass-effect";
 import { useRouter } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
 import { useEffect, useState } from "react";
 import { Animated, BackHandler, Dimensions, Pressable, StyleSheet, View } from "react-native";
 import { Text } from "@/components/AppText";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const MENU_WIDTH = Math.min(300, Dimensions.get("window").width * 0.8);
+
+// The privacy policy, as published from docs/privacy-policy.md. Update this if it moves
+// (for example to a GitHub Pages site); the App Store Connect listing needs the same URL.
+const PRIVACY_POLICY_URL = "https://github.com/yousifkabdou/saffbuddy-app/blob/main/docs/privacy-policy.md";
 
 // Menu button (top left, on every tab) + the side menu it opens: Profile at the top, Sign Out at the bottom.
 // Rendered once in the tabs layout, above the screens.
@@ -52,6 +57,15 @@ export default function SideMenu() {
     // No navigation on success: the tabs layout's onAuthStateChange sees the session end and redirects to login.
   };
 
+  const openPrivacyPolicy = () => {
+    setOpen(false);
+    // Opens in an in-app browser sheet, so the user stays in SaffBuddy.
+    WebBrowser.openBrowserAsync(PRIVACY_POLICY_URL).catch((e) => {
+      console.log("couldn't open the privacy policy", e);
+      showToast("Couldn't open the privacy policy. Try again.");
+    });
+  };
+
   const goToProfile = () => {
     setOpen(false);
     router.push("/profile");
@@ -89,6 +103,11 @@ export default function SideMenu() {
           <Pressable style={styles.item} onPress={goToProfile} accessibilityRole="button">
             <Ionicons name="person-circle-outline" size={24} color={colors.ink} />
             <Text style={styles.itemText}>Profile</Text>
+          </Pressable>
+
+          <Pressable style={styles.item} onPress={openPrivacyPolicy} accessibilityRole="link">
+            <Ionicons name="shield-checkmark-outline" size={24} color={colors.ink} />
+            <Text style={styles.itemText}>Privacy Policy</Text>
           </Pressable>
 
           {/* Pushed to the bottom by marginTop: "auto". */}

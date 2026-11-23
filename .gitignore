@@ -30,8 +30,11 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# local env files
-.env*.local
+# local env files. Only EXPO_PUBLIC_* values belong in the app (they're bundled into it anyway);
+# anything else, like a service_role key, would bypass every RLS rule if it were pushed.
+.env
+.env.*
+!.env.example
 
 # typescript
 *.tsbuildinfo
