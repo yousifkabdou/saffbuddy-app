@@ -12,5 +12,9 @@ Times Claude's code or review was wrong, and how it was caught.
   Caught by the phone test; confirmed in the react-native-maps docs. Fixed by following only until the recenter move finishes.
 - **2026-11-22:** Claude's fix for the zoomed-out marker highlight jumping to a neighbour (delay untapped selections 200ms so a tap can cancel them) was built on an unconfirmed theory of the event order, without timing logs first.
   Caught by the phone test: the highlight still jumps sometimes. Not fixed yet; next step is logging the real onPress/onSelect order.
+- **2026-11-23:** Claude's first "phone in another time zone" prayer tests set `process.env.TZ` inside the test file, which does nothing in Jest (each file gets its own copy of `process.env`), so they passed with or without the fix.
+  Caught by a mutation check (putting the old code back and seeing the tests still pass). Fixed by rerunning the tests in a separate process per zone, each asserting the zone it runs in.
+- **2026-11-23:** Claude's auto-retry change passed the banner's tap event into `retryLoads(auto)`, which would have silenced the "Still offline" message for every tap.
+  Caught by Claude's own review before commit. Fixed with `onPress={() => retryLoads()}`.
 - **2026-11-24:** The timing logs showed the 2026-11-22 theory was wrong: the tap came first, and the "jump" was a stray Apple selection of a neighbour ~500ms later, which react-native-maps lifts to zIndex +999, above the open room's zIndex 1. They also showed Claude's "already open" check read `selectedRoom`, still stale 2ms after the tap, so the panel reopened and reset.
-  Caught by dev-only event logs on the phone plus reading react-native-maps' AIRMapMarker.m. Fixed by giving the open room zIndex 2000 and comparing against the tapped room id.
+  Caught by dev-only event logs on the phone plus reading react-native-maps' AIRMapMarker.m. Fixed by giving the open room a zIndex above that boost (10,000), a fixed resting zIndex per marker, and comparing against the tapped room id.
