@@ -8,20 +8,16 @@ create table requests(
 
 alter table requests enable row level security;
 
+/* Revoke first: Supabase's default privileges give anon and authenticated every privilege
+   on new tables, and a table-wide select would cover every column, including requester.
+   requester is left out of the select grant on purpose: no one can read who posted
+   (a user id is a stable pseudonym that would reveal someone's prayer pattern). */
+revoke all on requests from anon, authenticated;
 grant insert, delete on requests to authenticated;
 grant select (id, room_id, start_time, gender) on requests to authenticated;
 
-
-create policy "only insert as self, start time 5 to 45 mins ahead"
-on requests
-for insert
-to authenticated
-with check (gender = (select gender from profiles where id = auth.uid())
-and (start_time between now() + interval '4 minutes' and now() + interval '46 minutes') -- app offers 5-45 min; 1 min slack each side for request delay
-and requester = auth.uid()
-and (gender = (select gender from rooms where id = requests.room_id) or exists (select gender from rooms where id = requests.room_id and gender is null))
-and (public.check_for_member_request() is null)
-);
+/* The insert policy is in joins.sql: it calls check_for_member_request(), which needs the
+   joiners table, and joiners needs this table. Run the files in the order the README lists. */
 
 create policy "read same gender as user"
 on requests
@@ -29,11 +25,14 @@ for select
 to authenticated
 using (gender = (select gender from profiles where id = auth.uid()));
 
-create policy "user can only delete their request"
+/* Cancelling is allowed only until the join cutoff (start + 2 min, the same interval as the
+   joiners insert policy). After that the prayer is happening; deleting it then would keep it
+   out of the tally (docs/adr/0001), so the app offers Done instead. Changed 2026-11-23. */
+create policy "requesters cancel only before the join cutoff"
 on requests
 for delete
 to authenticated
-using (requester = (auth.uid()));
+using (requester = auth.uid() and start_time > now() - interval '2 minutes');
 
 /* No update: to change a request, cancel it and post a new one */
 

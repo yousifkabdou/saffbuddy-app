@@ -1,21 +1,36 @@
+/* OSU-only accounts. Two places need the same rule, so it lives in one function:
+   - verify_osu_email: the "Before User Created" Auth hook (Dashboard -> Authentication -> Hooks)
+   - keep_osu_email: a trigger that stops an existing account changing its email to a
+     non-OSU address (supabase.auth.updateUser({ email }) never calls the sign-up hook).
+   The app has its own copy (isOsuEmail in src/lib/authErrors.ts) only to show a nicer message. */
+
+-- true only for addresses ending in @osu.edu (any case). null/missing -> false.
+-- LIKE treats "." as a plain dot, so notosu.edu and osu.edu.evil.com don't match.
+create or replace function public.is_osu_email(email text)
+returns boolean
+language sql
+immutable
+set search_path = ''
+as $$
+  select coalesce(lower(email) like '%@osu.edu', false)
+$$;
+
+revoke execute on function public.is_osu_email(text) from public, anon, authenticated;
+grant execute on function public.is_osu_email(text) to supabase_auth_admin;
 
 create or replace function public.verify_osu_email(info jsonb)
 returns jsonb
 language plpgsql
+set search_path = ''
 as $$
-declare
-  email text;
 begin
-  email := lower(info -> 'user' ->> 'email');
-  
-  if email like '%@osu.edu' then
-  return '{}':: jsonb;
+  if public.is_osu_email(info -> 'user' ->> 'email') then
+    return '{}'::jsonb;
   end if;
 
   return jsonb_build_object('error',
-  jsonb_build_object ('http_code', 400, 'message', 'Invalid email, only "@osu.edu emails" are allowed to sign up' )
+    jsonb_build_object('http_code', 400, 'message', 'Invalid email, only "@osu.edu emails" are allowed to sign up')
   );
-
 end;
 $$;
 -- Grant access to function to supabase_auth_admin
@@ -26,3 +41,33 @@ grant usage on schema public to supabase_auth_admin;
 
 -- Revoke function permissions from authenticated, anon and public
 revoke execute on function public.verify_osu_email from authenticated, anon, public;
+
+/* Email changes. Supabase Auth first saves the new address in email_change (pending),
+   then moves it into email once confirmed; both are checked, so a non-OSU change is refused
+   right when it's asked for. Raising here makes Auth return an error to the caller.
+   security definer: it runs as the user Auth connects as, and only needs to call is_osu_email. */
+create or replace function public.keep_osu_email()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if new.email is distinct from old.email and new.email is not null
+     and not public.is_osu_email(new.email) then
+    raise exception 'Only @osu.edu email addresses are allowed' using errcode = 'check_violation';
+  end if;
+  if new.email_change is distinct from old.email_change and coalesce(new.email_change, '') <> ''
+     and not public.is_osu_email(new.email_change) then
+    raise exception 'Only @osu.edu email addresses are allowed' using errcode = 'check_violation';
+  end if;
+  return new;
+end;
+$$;
+
+revoke execute on function public.keep_osu_email() from public, anon, authenticated;
+
+drop trigger if exists keep_osu_email on auth.users;
+create trigger keep_osu_email
+before update of email, email_change on auth.users
+for each row execute function public.keep_osu_email();

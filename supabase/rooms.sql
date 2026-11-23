@@ -11,6 +11,8 @@ create table rooms(
 
 alter table rooms enable row level security;
 
+-- Revoke first: Supabase's default privileges would otherwise let anyone write rooms.
+revoke all on rooms from anon, authenticated;
 grant select on rooms to authenticated;
 
 create policy "users read shared rooms and their own gender's rooms"
