@@ -32,6 +32,11 @@ const DOT_ZOOM_DELTA = 0.03;
 // After a marker tap, how long a selection of a *different* marker is treated as Apple Maps noise.
 const TAP_WINS_MS = 1000;
 
+// A selection with no tap behind it waits this long before opening the panel. Apple Maps can also
+// select a nearby marker *just before* the tapped one's onPress arrives; without the wait, the
+// highlight jumps to the neighbour and back. If a tap arrives within the wait, the tap wins.
+const SELECT_WAIT_MS = 200;
+
 export default function Index() {
   const [selectedRoom, setSelectedRoom] = useState<null | Room>(null);
   const tabBarHeight = useBottomTabBarHeight(); // the tab bar floats over the screen, so the panel needs room for it
@@ -39,6 +44,8 @@ export default function Index() {
   const mapRef = useRef<MapView | null>(null); // the map itself, so code can move it
   // The last marker the user actually tapped, and when. A ref: it only guides onSelect, nothing renders from it.
   const lastPress = useRef<{ roomId: string; at: number } | null>(null);
+  // A selection waiting out SELECT_WAIT_MS, so a tap can cancel it. Also a ref: it's a timer, not UI.
+  const pendingSelect = useRef<{ roomId: string; at: number; timer: ReturnType<typeof setTimeout> } | null>(null);
   // Request data, the clock and Done live in RequestsProvider (tabs layout) so every tab shares one copy.
   const {
     rooms, gender, now, requests, counts, markDone,
@@ -70,6 +77,11 @@ export default function Index() {
   // Ask once for "while using the app" permission. Denied = no dot and no recenter button.
   useEffect(() => {
     Location.requestForegroundPermissionsAsync().then(({ granted }) => setLocationAllowed(granted));
+  }, []);
+
+  // Leaving the screen mid-wait: drop the timer so it can't set state on an unmounted screen.
+  useEffect(() => () => {
+    if (pendingSelect.current) clearTimeout(pendingSelect.current.timer);
   }, []);
 
   // Whether the selected room has any requests that haven't expired, for the "Check current requests" link.
@@ -145,21 +157,41 @@ export default function Index() {
       coordinate =
       {{latitude: room.latitude, longitude: room.longitude }}
       onPress={ () => {
+        const pending = pendingSelect.current;
+        if (pending) {
+          // A selection beat this tap. Cancel it so the highlight never visits that room.
+          clearTimeout(pending.timer);
+          pendingSelect.current = null;
+          // Dev only: how far ahead the stray selection came, in case SELECT_WAIT_MS needs tuning.
+          if (__DEV__) console.log(`[map] select ${pending.roomId} beat tap ${room.id} by ${Date.now() - pending.at}ms`);
+        }
         lastPress.current = { roomId: room.id, at: Date.now() };
         openPanel(room);
       }}
       // After a map tap closes the panel, Apple Maps selects the next marker
       // without firing onPress, so open the panel on select too.
       onSelect={ () => {
+        const press = lastPress.current;
+        const recentPress = press !== null && Date.now() - press.at < TAP_WINS_MS;
         // Zoomed out, Apple Maps sometimes selects a nearby marker right after the tapped one,
         // with no tap behind it. A tap wins for a moment: ignore a different room selected just after.
-        const press = lastPress.current;
-        if (press && press.roomId !== room.id && Date.now() - press.at < TAP_WINS_MS) {
+        if (recentPress && press.roomId !== room.id) {
           // Deselect it too, or Apple Maps keeps it selected and ignores the next real tap on it.
           markerRefs.current[room.id]?.hideCallout();
           return;
         }
-        openPanel(room);
+        // The tap that just happened already opened this room (and a re-open would reset the picker).
+        if (recentPress && selectedRoom?.id === room.id) return;
+        // No tap behind it: wait briefly in case a tap on another marker is about to arrive.
+        if (pendingSelect.current) clearTimeout(pendingSelect.current.timer);
+        pendingSelect.current = {
+          roomId: room.id,
+          at: Date.now(),
+          timer: setTimeout(() => {
+            pendingSelect.current = null;
+            openPanel(room);
+          }, SELECT_WAIT_MS),
+        };
       }}
       // A custom view as the child replaces Apple's default balloon, which has a grow-on-select
       // animation (it visibly flashed when the TAP_WINS_MS guard deselected a stray marker).

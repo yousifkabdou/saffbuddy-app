@@ -10,3 +10,5 @@ Times Claude's code or review was wrong, and how it was caught.
   Caught by the phone test; timestamped logs in onPress/onSelect showed the gap. Fixed by widening the window to 1000ms.
 - **2026-11-21:** Claude's recenter button relied on `onRegionChange`'s `isGesture` to stop following the user, but `isGesture` is Google Maps only. On Apple Maps following never turned off: every drag snapped back to the user and the button did nothing.
   Caught by the phone test; confirmed in the react-native-maps docs. Fixed by following only until the recenter move finishes.
+- **2026-11-22:** Claude's fix for the zoomed-out marker highlight jumping to a neighbour (delay untapped selections 200ms so a tap can cancel them) was built on an unconfirmed theory of the event order, without timing logs first.
+  Caught by the phone test: the highlight still jumps sometimes. Not fixed yet; next step is logging the real onPress/onSelect order.
