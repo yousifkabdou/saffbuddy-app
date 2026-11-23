@@ -37,7 +37,7 @@ using (requester = (auth.uid()));
 
 /* No update: to change a request, cancel it and post a new one */
 
-/* Expiry: a pg_cron job (supabase/expiry.sql) deletes requests 17 minutes
+/* Expiry: a pg_cron job (supabase/expiry.sql) deletes requests 10 minutes
    after their start time and adds them to the per-room daily tally
    (docs/adr/0001), so no request history is kept. */
 

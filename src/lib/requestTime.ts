@@ -6,11 +6,11 @@
 export const JOIN_GRACE_MINUTES = 2;
 
 // A request disappears this many minutes after its start time.
-export const EXPIRY_MINUTES = 15;
+export const EXPIRY_MINUTES = 8;
 
 // The server deletes a request (and counts it in the tally) this many minutes
 // after its start time. Must match the interval in supabase/expiry.sql.
-export const SERVER_DELETE_MINUTES = 17;
+export const SERVER_DELETE_MINUTES = 10;
 
 const MINUTE = 60 * 1000;
 
