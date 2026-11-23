@@ -57,6 +57,13 @@ insert into results select '6 Men post: Men pinged', 1, pg_temp.pings('requests:
 select test, expected, actual, case when expected = actual then 'pass' else 'FAIL' end as result
 from results;
 
+-- Stop with an error naming any failed check, so a failure can't be missed (and npm test fails).
+do $$
+declare failed text;
+begin
+  select string_agg(test, '; ') into failed from results where expected::text is distinct from actual::text;
+  if failed is not null then raise exception 'FAIL: %', failed; end if;
+end $$;
 rollback;
 
 
@@ -108,29 +115,60 @@ insert into results select '5 Men user, other channel: nothing', 0, count(*) fro
 select test, expected, actual, case when expected = actual then 'pass' else 'FAIL' end as result
 from results;
 
+-- Stop with an error naming any failed check, so a failure can't be missed (and npm test fails).
+do $$
+declare failed text;
+begin
+  select string_agg(test, '; ') into failed from results where expected::text is distinct from actual::text;
+  if failed is not null then raise exception 'FAIL: %', failed; end if;
+end $$;
 rollback;
 
 
-/* ---------- Block C: NEGATIVE, logged-out users can't listen ----------
-   Expected: 0, or "permission denied for table messages". Either is a pass. */
-begin;
-insert into realtime.messages (topic, extension, event, payload, private)
-values ('requests:Women', 'broadcast', 'test-ping', '{}', true);
-set local role anon;
-select set_config('realtime.topic', 'requests:Women', true);
-select count(*) as anon_sees from realtime.messages where event = 'test-ping';
-rollback;
-
-
-/* ---------- Block D: NEGATIVE, users can't send pings themselves ----------
-   Expected: ERROR "new row violates row-level security policy" (or
-   "permission denied"). Either is a pass. */
+/* ---------- Block C: NEGATIVE, logged-out users can't listen, and users can't send ----------
+   Expected: "Success. No rows returned". A failure stops with "FAIL: <checks>". */
 begin;
 insert into auth.users (id, email) values ('00000000-0000-0000-0000-0000000000a1', 'a1@osu.edu');
 insert into public.profiles (id, first_name, gender) values ('00000000-0000-0000-0000-0000000000a1', 'Test', 'Women');
-set local role authenticated;
-select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000a1","role":"authenticated"}', true);
-select set_config('realtime.topic', 'requests:Women', true);
 insert into realtime.messages (topic, extension, event, payload, private)
-values ('requests:Women', 'broadcast', 'changed', '{}', true);
+values ('requests:Women', 'broadcast', 'test-ping', '{}', true);
+
+create temp table results (test text, expected text, actual text);
+
+-- Runs a statement as a user (null = logged out) on a channel; 'ok:<rows>' or 'error:<code>'.
+create function pg_temp.attempt(who uuid, topic text, stmt text) returns text language plpgsql as $f$
+declare n bigint;
+begin
+  perform set_config('request.jwt.claims', case when who is null then '{"role":"anon"}'
+    else json_build_object('sub', who, 'role', 'authenticated')::text end, true);
+  perform set_config('realtime.topic', topic, true);
+  if who is null then set local role anon; else set local role authenticated; end if;
+  execute stmt;
+  get diagnostics n = row_count;
+  reset role;
+  return 'ok:' || n;
+exception when others then
+  reset role;
+  return 'error:' || sqlstate;
+end $f$;
+
+-- Logged out: either "permission denied" or zero rows is safe.
+insert into results select 'C1 NEGATIVE: logged-out user receives nothing', 'refused',
+  case when r in ('ok:0') or r like 'error:%' then 'refused' else r end
+  from (select pg_temp.attempt(null, 'requests:Women', 'select * from realtime.messages where event = ''test-ping''') r) x;
+insert into results select 'D1 NEGATIVE: a user cannot send a ping', 'refused',
+  case when r like 'error:%' then 'refused' else r end
+  from (select pg_temp.attempt('00000000-0000-0000-0000-0000000000a1', 'requests:Women',
+    'insert into realtime.messages (topic, extension, event, payload, private) values (''requests:Women'', ''broadcast'', ''changed'', ''{}'', true)') r) x;
+
+select test, expected, actual, case when expected = actual then 'pass' else 'FAIL' end as result
+from results;
+-- Stop with an error naming any failed check, so a failure can't be missed (and npm test fails).
+do $$
+declare failed text;
+begin
+  select string_agg(test, '; ') into failed from results where expected::text is distinct from actual::text;
+  if failed is not null then raise exception 'FAIL: %', failed; end if;
+end $$;
+
 rollback;
