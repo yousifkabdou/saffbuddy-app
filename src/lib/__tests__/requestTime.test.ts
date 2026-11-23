@@ -15,16 +15,16 @@ describe("isInProgress", () => {
 });
 
 describe("isExpired", () => {
-  it("is false just before 15 minutes after start", () => {
-    expect(isExpired(START, start + 15 * MINUTE - 1)).toBe(false);
+  it("is false just before 8 minutes after start", () => {
+    expect(isExpired(START, start + 8 * MINUTE - 1)).toBe(false);
   });
-  it("is true at 15 minutes after start", () => {
-    expect(isExpired(START, start + 15 * MINUTE)).toBe(true);
+  it("is true at 8 minutes after start", () => {
+    expect(isExpired(START, start + 8 * MINUTE)).toBe(true);
   });
 });
 
 describe("freeAgainAt", () => {
-  it("is 18 minutes after start (server deletes at 17, cron runs each minute)", () => {
-    expect(freeAgainAt(START)).toBe("2026-11-19T18:18:00.000Z");
+  it("is 11 minutes after start (server deletes at 10, cron runs each minute)", () => {
+    expect(freeAgainAt(START)).toBe("2026-11-19T18:11:00.000Z");
   });
 });

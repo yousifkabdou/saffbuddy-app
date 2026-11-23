@@ -1,4 +1,5 @@
 import { useSharedRequests } from "@/context/RequestsContext";
+import { colors } from "@/theme";
 import { PrayerRequest } from "@/data/request";
 import { openDirections } from "@/lib/directions";
 import { formatTime, isInProgress } from "@/lib/requestTime";
@@ -8,13 +9,16 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useBottomTabBarHeight } from "expo-router/js-tabs";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, Pressable, ScrollView, type ScrollViewInstance, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, ScrollView, type ScrollViewInstance, StyleSheet, View } from "react-native";
+import { Text } from "@/components/AppText";
+import TitlePill, { useTitleSpace } from "@/components/TitlePill";
 
 // Every room the user can see, grouped with its requests, busiest room first (see sortRooms).
 export default function Requests() {
   const { rooms, requests, now, setOpenRoomId, focusRoomId, setFocusRoomId } = useSharedRequests();
   const router = useRouter();
   const tabBarHeight = useBottomTabBarHeight(); // the tab bar floats over the screen
+  const listTop = useTitleSpace(); // space the floating title covers
   const scrollRef = useRef<ScrollViewInstance | null>(null); // the list itself, so code can scroll it
   // Where each room's section starts inside the list (in px from the top), by room id.
   // A ref, not state: it changes on every layout and nothing needs to re-render when it does.
@@ -38,10 +42,10 @@ export default function Requests() {
     if (!focusRoomId) return;
     const y = sectionY.current[focusRoomId];
     if (y === undefined) return;
-    scrollRef.current?.scrollTo({ y, animated: true });
+    scrollRef.current?.scrollTo({ y: y - listTop, animated: true }); // land just below the floating title
     setFocusRoomId(null);
   };
-  useEffect(scrollToFocusRoom, [focusRoomId]);
+  useEffect(scrollToFocusRoom, [focusRoomId, listTop, setFocusRoomId]);
 
   // A Set is changed by making a new one: React only re-renders when state is a new object.
   const toggle = (roomId: string) => {
@@ -57,7 +61,8 @@ export default function Requests() {
   const anyRequests = groups.some((g) => g.requests.length > 0);
 
   return (
-    <ScrollView ref={scrollRef} style={styles.screen} contentContainerStyle={{ paddingBottom: tabBarHeight + 16 }}>
+    <View style={styles.screen}>
+    <ScrollView ref={scrollRef} contentContainerStyle={{ paddingTop: listTop, paddingBottom: tabBarHeight + 16 }}>
       {!anyRequests && rooms.length > 0 &&
       <Text style={styles.emptyAll}>No requests right now. Post one from a room on the map.</Text>}
 
@@ -79,6 +84,9 @@ export default function Requests() {
         />
       ))}
     </ScrollView>
+    {/* Floating liquid glass title; the cards scroll underneath it. */}
+    <TitlePill title="Requests" />
+    </View>
   );
 }
 
@@ -94,6 +102,7 @@ function RoomSection({ group, open, onToggle, onOpenOnMap, onLayout }: {
   const hasRequests = requests.length > 0;
 
   return (
+    // White card floating over the grey screen.
     <View style={styles.section} onLayout={(e) => onLayout(e.nativeEvent.layout.y)}>
       {/* Rooms with requests collapse/expand. Empty rooms have no chevron; tapping opens the room on the map. */}
       <Pressable style={styles.header} onPress={hasRequests ? onToggle : onOpenOnMap}>
@@ -103,9 +112,9 @@ function RoomSection({ group, open, onToggle, onOpenOnMap, onLayout }: {
           {!hasRequests && <Text style={styles.emptyRoom}>(No requests, click on location to request)</Text>}
         </View>
         {hasRequests &&
-        <Ionicons name={open ? "chevron-up" : "chevron-down"} size={20} color="gray" style={styles.chevron} />}
+        <Ionicons name={open ? "chevron-up" : "chevron-down"} size={20} color={colors.grey} style={styles.chevron} />}
         <Pressable style={styles.directionsButton} onPress={() => openDirections(room)}>
-          <Ionicons name="location" size={22} color="#1a73e8" />
+          <Ionicons name="location" size={22} color={colors.scarlet} />
         </Pressable>
       </Pressable>
 
@@ -117,7 +126,7 @@ function RoomSection({ group, open, onToggle, onOpenOnMap, onLayout }: {
 // One request: start time and member count on the left, the action that fits on the right.
 function RequestRow({ request }: { request: PrayerRequest }) {
   const {
-    now, gender, counts, myRequestId, myJoinedId, doneId, setDoneId,
+    now, gender, counts, myRequestId, myJoinedId, doneId, markDone,
     handleJoin, cancelRequest, leaveRequest,
   } = useSharedRequests();
 
@@ -153,7 +162,7 @@ function RequestRow({ request }: { request: PrayerRequest }) {
     action = <Text style={styles.finishingText}>Finishing up</Text>;
   } else if ((isMine || isJoined) && inProgress) {
     action = (
-      <Pressable style={[styles.actionButton, styles.doneButton]} onPress={() => setDoneId(request.id)}>
+      <Pressable style={[styles.actionButton, styles.doneButton]} onPress={() => markDone(request.id)}>
         <Text style={styles.actionText}>Done</Text>
       </Pressable>
     );
@@ -200,18 +209,25 @@ function RequestRow({ request }: { request: PrayerRequest }) {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "white",
+    backgroundColor: colors.background, // grey, so the glass room cards stand out
   },
   emptyAll: {
-    color: "gray",
+    color: colors.grey,
     textAlign: "center",
     marginTop: 16,
     marginHorizontal: 20,
   },
   section: {
-    borderBottomWidth: 1,
-    borderBottomColor: "#eee",
-    paddingHorizontal: 20,
+    // Each room is its own rounded white card with space around it, lifted by a soft shadow.
+    backgroundColor: colors.paper,
+    borderRadius: 20,
+    shadowColor: "black",
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    marginHorizontal: 16,
+    marginTop: 12,
+    paddingHorizontal: 16,
     paddingVertical: 14,
   },
   header: {
@@ -224,13 +240,14 @@ const styles = StyleSheet.create({
   name: {
     fontSize: 18,
     fontWeight: "bold",
+    color: colors.scarlet,
   },
   description: {
-    color: "gray",
+    color: colors.grey,
     marginTop: 2,
   },
   emptyRoom: {
-    color: "gray",
+    color: colors.grey,
     fontStyle: "italic",
     marginTop: 2,
   },
@@ -242,7 +259,7 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: 22,
     borderWidth: 1,
-    borderColor: "#ddd",
+    borderColor: colors.line,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -259,31 +276,31 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
   members: {
-    color: "gray",
+    color: colors.grey,
     marginTop: 2,
   },
   actionButton: {
     paddingHorizontal: 16,
     paddingVertical: 6,
     borderRadius: 16,
-    backgroundColor: "black",
+    backgroundColor: colors.ink,
   },
   redButton: {
-    backgroundColor: "#d93025",
+    backgroundColor: colors.scarlet,
   },
   doneButton: {
-    backgroundColor: "#1e8e3e",
+    backgroundColor: colors.success,
   },
   actionText: {
-    color: "white",
+    color: colors.paper,
     fontWeight: "bold",
   },
   inProgressText: {
-    color: "#1e8e3e",
+    color: colors.success,
     fontWeight: "bold",
   },
   finishingText: {
-    color: "#80868b",
+    color: colors.greyLight,
     fontWeight: "bold",
   },
 });

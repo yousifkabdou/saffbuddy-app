@@ -1,7 +1,9 @@
 import { supabase } from "@/lib/supabase";
+import { colors } from "@/theme";
 import { router } from "expo-router";
 import { useState } from "react";
-import { Button, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
+import { Text, TextInput } from "@/components/AppText";
 
 
 type Gender = "Men" | "Women";
@@ -12,7 +14,7 @@ const genderOptions: { label: string; value: Gender }[] = [
   { label: "Sister", value: "Women" },
 ];
 
-export default function setup(){
+export default function Setup(){
     const [firstName, setFirstName] = useState("");
     const [errorState, setErrorState] = useState<string | false>(false);
     const [gender, setGender] = useState<Gender | null>(null);
@@ -39,7 +41,8 @@ export default function setup(){
 
        if (insertError){
         if (insertError.code === '23505'){
-        setErrorState("You've already set up a profile");
+        // A profile already exists (primary key clash), so there's nothing to set up: go home.
+        router.replace("/");
         return;
         }
         if (insertError.code === '23514'){
@@ -47,12 +50,11 @@ export default function setup(){
         return;
         }
         else{
-        setErrorState('Something went wrong please try again. Error code: ${insertError.code}');
+        setErrorState(`Something went wrong please try again. Error code: ${insertError.code}`);
         return;
         }
        }
        router.replace("/");
-      // your save logic goes here
     }
 
     const selectedLabel = genderOptions.find(o => o.value === gender)?.label;
@@ -61,16 +63,16 @@ export default function setup(){
    
     <View style={styles.container}>
         <Text style={styles.header}>Welcome to SaffBuddy</Text>
-        <Text style={styles.subtext}>Tell us a bit about yourself to get started.</Text>
+        <Text style={styles.subtext}>Tell us a bit about yourself to get started</Text>
 
 
+        <Text style={styles.label}>First name</Text>
         <TextInput style={styles.input} value={firstName} onChangeText={setFirstName}
-        placeholder="First name" placeholderTextColor="gray"
         autoCapitalize="words" maxLength={20} />
         
 
         <Pressable style={styles.input} onPress={() => setPickerOpen(!pickerOpen)}>
-          <Text style={{ color: selectedLabel ? "black" : "gray" }}>
+          <Text style={{ color: selectedLabel ? colors.ink : colors.greyLight }}>
             {selectedLabel ?? "Select gender"}
           </Text>
         </Pressable>
@@ -82,9 +84,12 @@ export default function setup(){
             </Pressable>
           ))}
         </View>}
-        <Text style={styles.note}>This can't be changed later.</Text>
+        <Text style={styles.note}>This can’t be changed later</Text>
 
-        <Button title="Save" onPress={handleSave} disabled={!gender} />
+        {/* Disabled (and faded) until a gender is picked, same as before. */}
+        <Pressable style={[styles.saveButton, !gender && styles.saveDisabled]} onPress={handleSave} disabled={!gender}>
+          <Text style={styles.saveText}>Save</Text>
+        </Pressable>
         {nameError && <Text style={styles.error}>{nameError}</Text>}
          {errorState && <Text style={styles.error}>{errorState}</Text>}
 
@@ -104,14 +109,21 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
   subtext: {
-    color: "gray",
+    color: colors.grey,
     marginTop: 4,
     marginBottom: 16,
+  },
+  label: {
+    width: "80%",
+    fontSize: 15,
+    fontWeight: "600",
+    color: colors.ink,
+    marginTop: 8,
   },
   input: {
     width: "80%",
     borderWidth: 1,
-    borderColor: "gray",
+    borderColor: colors.line,
     borderRadius: 8,
     padding: 10,
     marginVertical: 8,
@@ -119,7 +131,7 @@ const styles = StyleSheet.create({
   options: {
     width: "80%",
     borderWidth: 1,
-    borderColor: "gray",
+    borderColor: colors.line,
     borderRadius: 8,
   },
   option: {
@@ -127,14 +139,31 @@ const styles = StyleSheet.create({
   },
   note: {
     width: "80%",
-    color: "gray",
+    color: colors.grey,
     fontSize: 12,
+  },
+  saveButton: {
+    width: "80%",
+    height: 50,
+    borderRadius: 25,       // half the height = pill
+    backgroundColor: colors.scarlet,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 16,
+  },
+  saveDisabled: {
+    opacity: 0.4,
+  },
+  saveText: {
+    color: colors.paper,
+    fontSize: 16,
+    fontWeight: "600",
   },
   error: {
     width: "80%",
     borderWidth: 1,
-    color: "red",
-    borderColor: "red",
+    color: colors.scarlet,
+    borderColor: colors.scarlet,
     borderRadius: 8,
     padding: 10,
     marginVertical: 8,

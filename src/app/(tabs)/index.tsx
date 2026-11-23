@@ -1,3 +1,7 @@
+import CampusIcon from "@/components/CampusIcon";
+import MarkerPin, { MarkerDot } from "@/components/MarkerPin";
+import { colors } from "@/theme";
+import PrayerCountdown from "@/components/PrayerCountdown";
 import { useSharedRequests } from "@/context/RequestsContext";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { Room } from "@/data/room";
@@ -7,13 +11,23 @@ import { otherPerson } from "@/lib/wording";
 import { useRouter } from "expo-router";
 import { useBottomTabBarHeight } from "expo-router/js-tabs";
 import { useEffect, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
+import { Text } from "@/components/AppText";
 import MapView, { MapMarker, Marker } from "react-native-maps";
+import * as Location from "expo-location";
+import { GlassView } from "expo-glass-effect";
 
 // Start time choices, in minutes from now. No "Now": a request needs a few minutes
 // for anyone to see it and walk over. The requests insert policy only accepts
 // start times 5-45 minutes ahead (with 1 min slack), so keep these in sync.
 const START_OFFSETS = [5, 10, 15, 30, 45];
+
+// Where the map starts, and where the campus button takes you back to.
+const CAMPUS_REGION = { latitude: 40.000632, longitude: -83.013325, latitudeDelta: 0.013, longitudeDelta: 0.013 };
+
+// Zoomed out past this (latitudeDelta, degrees of latitude visible), markers shrink to dots
+// so nearby rooms stop overlapping. The starting view is 0.013.
+const DOT_ZOOM_DELTA = 0.03;
 
 // After a marker tap, how long a selection of a *different* marker is treated as Apple Maps noise.
 const TAP_WINS_MS = 1000;
@@ -27,13 +41,36 @@ export default function Index() {
   const lastPress = useRef<{ roomId: string; at: number } | null>(null);
   // Request data, the clock and Done live in RequestsProvider (tabs layout) so every tab shares one copy.
   const {
-    rooms, gender, now, requests, counts, setDoneId,
+    rooms, gender, now, requests, counts, markDone,
     myRequestRoom, myJoinedRoom, activeRequestRow, activeJoinedRow, finishingRow,
     postRequest, cancelRequest, leaveRequest, loadRequests, loadJoins,
     openRoomId, setOpenRoomId, setFocusRoomId,
   } = useSharedRequests();
   const router = useRouter();
   const [panelMode, setPanelMode] = useState<"buttons" | "picker" | "cancel" | "leave">("buttons");
+  // Location (docs/adr/0002): the map draws the blue dot. The latest position is kept in a ref,
+  // in memory only, so the recenter button can move the map. Never put it in state/context,
+  // log it, or send it anywhere.
+  const [locationAllowed, setLocationAllowed] = useState(false);
+  const userLocation = useRef<{ latitude: number; longitude: number } | null>(null);
+  // Whether markers are drawn as small dots. Only flips when crossing DOT_ZOOM_DELTA;
+  // setting the same boolean again doesn't re-render.
+  const [zoomedOut, setZoomedOut] = useState(false);
+
+  // Fly the map to the user. A camera move (vs. a region move) is MapKit's smoother "fly" animation,
+  // closer to Apple Maps' own locate button. iOS ignores the duration; MapKit picks the speed.
+  // It replaces any move already in progress, so it also works while the map is still gliding.
+  const recenter = () => {
+    if (!userLocation.current) return; // no fix yet (just opened, or GPS still warming up)
+    // altitude (metres above the map) sets the zoom on Apple Maps; ~1000m shows a few blocks.
+    mapRef.current?.animateCamera({ center: userLocation.current, altitude: 1000, heading: 0, pitch: 0 });
+    setZoomedOut(false); // our own camera moves don't fire onRegionChangeComplete on iOS, so set it here
+  };
+
+  // Ask once for "while using the app" permission. Denied = no dot and no recenter button.
+  useEffect(() => {
+    Location.requestForegroundPermissionsAsync().then(({ granted }) => setLocationAllowed(granted));
+  }, []);
 
   // Whether the selected room has any requests that haven't expired, for the "Check current requests" link.
   // Checked against the clock (not just the list) so the link disappears once the last one expires.
@@ -61,27 +98,41 @@ export default function Index() {
     if (!openRoomId) return;
     const room = rooms.find((r) => r.id === openRoomId);
     if (!room) return; // rooms not loaded yet; this effect runs again when they are
+    // The tap happened on another tab, but the panel state lives here, so an effect is how this
+    // screen hears about it. Costs one extra render per tap; the alternative is moving the panel
+    // state into the shared context, which couples the screens for no visible gain.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     openPanel(room);
     // Move the map to the room. The centre sits a bit south of it, so the pin
     // shows above the panel instead of behind it.
+    setZoomedOut(false); // zooming in to the room (see recenter for why it's set by hand)
     mapRef.current?.animateToRegion(
       { latitude: room.latitude - 0.0015, longitude: room.longitude, latitudeDelta: 0.006, longitudeDelta: 0.006 },
       400,
     );
     setOpenRoomId(null); // handled: clear it so it doesn't reopen next time the map renders
-  }, [openRoomId, rooms]);
+  }, [openRoomId, rooms, setOpenRoomId]);
 
   return (
 
     <View style={styles.container}>
       <MapView style={styles.map}
       ref={mapRef}
-      initialRegion={{
-        latitude: 40.000632,
-        longitude: -83.013325,
-        latitudeDelta: 0.013,
-        longitudeDelta: 0.013,
+      // Toned-down Apple map: muted colours, no shops/restaurants, flat buildings, so the pins stand out.
+      mapType="mutedStandard"
+      showsPointsOfInterests={false}
+      showsBuildings={false}
+      showsCompass={false}
+      showsUserLocation={locationAllowed}
+      showsMyLocationButton={false} // Android's built-in button; we draw our own
+      // The map reports each new position; keep only the latest, in the ref.
+      onUserLocationChange={(event) => {
+        const c = event.nativeEvent.coordinate;
+        if (c) userLocation.current = { latitude: c.latitude, longitude: c.longitude };
       }}
+      initialRegion={CAMPUS_REGION}
+      // Fires when the user finishes a drag or pinch: switch between pins and dots.
+      onRegionChangeComplete={(region) => setZoomedOut(region.latitudeDelta > DOT_ZOOM_DELTA)}
       onPress={(event) => {
         // Tapping a marker can also reach the map; only close for taps on empty map.
         if (event.nativeEvent.action !== "marker-press") {
@@ -112,24 +163,48 @@ export default function Index() {
       }}
       // A custom view as the child replaces Apple's default balloon, which has a grow-on-select
       // animation (it visibly flashed when the TAP_WINS_MS guard deselected a stray marker).
-      // The view never changes, so tracksViewChanges={false} lets the map draw it once.
-      anchor={{ x: 0.5, y: 0.5 }}
-      tracksViewChanges={false}>
-        <View style={styles.marker}>
-          <Text style={styles.markerText}>🕌</Text>
-        </View>
+      // The open room's marker swaps colours and draws on top of its neighbours.
+      // A pin's point is its bottom centre; a dot's is its middle.
+      anchor={zoomedOut ? { x: 0.5, y: 0.5 } : { x: 0.5, y: 1 }}
+      zIndex={selectedRoom?.id === room.id ? 1 : 0}>
+        {zoomedOut
+          ? <MarkerDot selected={selectedRoom?.id === room.id} />
+          : <MarkerPin selected={selectedRoom?.id === room.id} />}
       </Marker>
     ))}
       </MapView>
+      <PrayerCountdown />
+      {!selectedRoom &&
+      <View style={[styles.mapButtons, { bottom: tabBarHeight + 12 }]}>
+        {/* Back to campus: the same view the map starts with. Always shown, even without location. */}
+        <GlassView style={styles.mapButton} glassEffectStyle="regular" isInteractive>
+          <Pressable style={styles.mapButtonPress} onPress={() => {
+            // Same "fly" camera move as the location button. ~2200m altitude matches the starting zoom.
+            mapRef.current?.animateCamera({
+              center: { latitude: CAMPUS_REGION.latitude, longitude: CAMPUS_REGION.longitude },
+              altitude: 2200, heading: 0, pitch: 0,
+            });
+            setZoomedOut(false); // the starting zoom shows pins, not dots
+          }}>
+            <CampusIcon size={24} />
+          </Pressable>
+        </GlassView>
+        {locationAllowed &&
+        <GlassView style={styles.mapButton} glassEffectStyle="regular" isInteractive>
+          <Pressable style={styles.mapButtonPress} onPress={recenter}>
+            <Ionicons name="navigate-outline" size={22} color={colors.grey} />
+          </Pressable>
+        </GlassView>}
+      </View>}
       {selectedRoom &&
-      <View style={[styles.panel, { paddingBottom: tabBarHeight }]}>
+      <View style={[styles.panel, { paddingBottom: tabBarHeight + 16 }]}>
         <Pressable style={styles.closeButton} onPress={closePanel}>
           <Text style={styles.closeText}>✕</Text>
         </Pressable>
 
         <View style={styles.header}>
           <View style={styles.logo}>
-            <Text style={styles.logoText}>🕌</Text>
+            <MarkerPin selected={false} height={60} />
           </View>
           <Text style={styles.name}>{selectedRoom.building}</Text>
         </View>
@@ -150,7 +225,7 @@ export default function Index() {
           <View style={styles.confirmTextBox}>
             <Text style={styles.confirmText}>Cancel your request?</Text>
             <Text style={styles.warningText}>
-              You're cancelling on {otherPerson(gender)}. Be considerate of others' time.
+              You’re cancelling on {otherPerson(gender)}. Be considerate of others’ time.
             </Text>
           </View>
           <Pressable style={styles.confirmYes} onPress={() => { setPanelMode("buttons"); cancelRequest(); }}>
@@ -191,15 +266,13 @@ export default function Index() {
         :
         <View style={styles.actions}>
           <Pressable style={styles.directionsButton} onPress={() => openDirections(selectedRoom)}>
-            <Ionicons name="location" size={24} color="#1a73e8" />
+            <Ionicons name="location" size={24} color={colors.scarlet} />
           </Pressable>
           {/* Once a request is in progress, the prayer is happening: "Done" ends it with no warning.
               Done only hides it here; deleting would lose it from the tally. */}
           {activeRequestRow && isInProgress(activeRequestRow.start_time, now) ?
-          <Pressable style={[styles.requestButton, styles.doneButton]} onPress={() => setDoneId(activeRequestRow.id)}>
-            <Text style={styles.cancelTitle} numberOfLines={1} adjustsFontSizeToFit>
-              Done<Text style={styles.doneBlessing}> · May Allah accept your prayer</Text>
-            </Text>
+          <Pressable style={[styles.requestButton, styles.doneButton]} onPress={() => markDone(activeRequestRow.id)}>
+            <Text style={styles.cancelTitle} numberOfLines={1}>Done</Text>
             <Text style={styles.cancelDetail} numberOfLines={1}>
               {myRequestRoom?.building} · {formatTime(activeRequestRow.start_time)}
             </Text>
@@ -215,10 +288,8 @@ export default function Index() {
             </Text>
           </Pressable>
           : activeJoinedRow && isInProgress(activeJoinedRow.start_time, now) ?
-          <Pressable style={[styles.requestButton, styles.doneButton]} onPress={() => setDoneId(activeJoinedRow.id)}>
-            <Text style={styles.cancelTitle} numberOfLines={1} adjustsFontSizeToFit>
-              Done<Text style={styles.doneBlessing}> · May Allah accept your prayer</Text>
-            </Text>
+          <Pressable style={[styles.requestButton, styles.doneButton]} onPress={() => markDone(activeJoinedRow.id)}>
+            <Text style={styles.cancelTitle} numberOfLines={1}>Done</Text>
             <Text style={styles.cancelDetail} numberOfLines={1}>
               {myJoinedRoom?.building} · {formatTime(activeJoinedRow.start_time)}
             </Text>
@@ -266,7 +337,7 @@ const styles = StyleSheet.create({
     right: 0,               // ...to the right edge
                             // no top: the panel is as tall as its content
 
-    backgroundColor: "white",
+    backgroundColor: colors.paper,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 20,
@@ -289,7 +360,23 @@ const styles = StyleSheet.create({
   },
   closeText: {
     fontSize: 18,
-    color: "gray",
+    color: colors.grey,
+  },
+  mapButtons: {
+    position: "absolute",
+    right: 16,
+    gap: 10,                // campus button stacked above the location button
+  },
+  mapButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    overflow: "hidden",
+  },
+  mapButtonPress: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
   header: {
     flexDirection: "row",   // logo and name side by side
@@ -297,33 +384,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   logo: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,       // half the width = circle
-    backgroundColor: "#f0f0f0",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 16,
-  },
-  marker: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "white",
-    borderWidth: 2,
-    borderColor: "black",
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "black",
-    shadowOpacity: 0.25,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 1 },
-  },
-  markerText: {
-    fontSize: 18,
-  },
-  logoText: {
-    fontSize: 32,
+    marginRight: 12,
   },
   name: {
     flex: 1,                // take the rest of the row; long names wrap
@@ -337,10 +398,10 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   description: {
-    color: "gray",
+    color: colors.grey,
   },
   requestsLink: {
-    color: "#1a73e8",
+    color: colors.scarlet,
     fontWeight: "bold",
   },
   actions: {
@@ -354,7 +415,7 @@ const styles = StyleSheet.create({
     height: 52,
     borderRadius: 26,
     borderWidth: 1,
-    borderColor: "#ddd",
+    borderColor: colors.line,
     alignItems: "center",
     justifyContent: "center",
     marginRight: 12,
@@ -363,12 +424,12 @@ const styles = StyleSheet.create({
     flex: 1,                // stretch across the rest of the row
     height: 52,
     borderRadius: 26,
-    backgroundColor: "black",
+    backgroundColor: colors.ink,
     alignItems: "center",
     justifyContent: "center",
   },
   requestText: {
-    color: "white",
+    color: colors.paper,
     fontSize: 18,
     fontWeight: "bold",
   },
@@ -381,18 +442,18 @@ const styles = StyleSheet.create({
     flex: 1,                // the five buttons share the row equally
     height: 52,
     borderRadius: 26,
-    backgroundColor: "black",
+    backgroundColor: colors.ink,
     alignItems: "center",
     justifyContent: "center",
     marginRight: 6,
   },
   timeText: {
-    color: "white",
+    color: colors.paper,
     fontSize: 16,
     fontWeight: "bold",
   },
   timeUnit: {
-    color: "white",
+    color: colors.paper,
     fontSize: 10,
     paddingHorizontal: 4,   // keeps the word off the rounded edges
   },
@@ -400,27 +461,24 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   cancelButton: {
-    backgroundColor: "#d93025",   // red: you're in a request
+    backgroundColor: colors.scarlet, // scarlet: you're in a request
     paddingHorizontal: 16,
   },
   doneButton: {
-    backgroundColor: "#1e8e3e",   // green: the prayer is happening, nothing to warn about
+    backgroundColor: colors.success,   // green: the prayer is happening, nothing to warn about
     paddingHorizontal: 16,
   },
   finishingButton: {
-    backgroundColor: "#80868b",   // grey: nothing to do but wait
+    backgroundColor: colors.greyLight,   // grey: nothing to do but wait
     paddingHorizontal: 16,
   },
-  doneBlessing: {
-    fontWeight: "normal",
-  },
   cancelTitle: {
-    color: "white",
+    color: colors.paper,
     fontSize: 16,
     fontWeight: "bold",
   },
   cancelDetail: {
-    color: "white",
+    color: colors.paper,
     fontSize: 12,
     opacity: 0.85,
   },
@@ -434,14 +492,14 @@ const styles = StyleSheet.create({
   },
   warningText: {
     fontSize: 13,
-    color: "#555",
+    color: colors.grey,
     marginTop: 2,
   },
   confirmYes: {
     height: 52,
     paddingHorizontal: 24,
     borderRadius: 26,
-    backgroundColor: "#d93025",
+    backgroundColor: colors.scarlet,
     alignItems: "center",
     justifyContent: "center",
     marginRight: 8,
@@ -451,7 +509,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     borderRadius: 26,
     borderWidth: 1,
-    borderColor: "#ddd",
+    borderColor: colors.line,
     alignItems: "center",
     justifyContent: "center",
   },

@@ -150,6 +150,7 @@ export function useRequests(
 
   // Load once when the screen using this hook mounts.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch on mount; state is only set after the awaits, when data arrives
     loadRequests();
     loadJoins();
   }, []);
