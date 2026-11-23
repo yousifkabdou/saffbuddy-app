@@ -14,7 +14,7 @@ export default function TitlePill({ title }: { title: string }) {
   return (
     <View style={[styles.wrapper, { top: insets.top + 8 }]} pointerEvents="none">
       <GlassView style={styles.pill} glassEffectStyle="regular">
-        <Text style={styles.text}>{title}</Text>
+        <Text style={styles.text} accessibilityRole="header">{title}</Text>
       </GlassView>
     </View>
   );

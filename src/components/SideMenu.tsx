@@ -5,7 +5,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { GlassView } from "expo-glass-effect";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { Animated, Dimensions, Pressable, StyleSheet, View } from "react-native";
+import { Animated, BackHandler, Dimensions, Pressable, StyleSheet, View } from "react-native";
 import { Text } from "@/components/AppText";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -26,6 +26,17 @@ export default function SideMenu() {
   useEffect(() => {
     Animated.timing(progress, { toValue: open ? 1 : 0, duration: 220, useNativeDriver: true }).start();
   }, [open, progress]);
+
+  // Android: while the menu is open, the back button closes it (the usual drawer behaviour)
+  // instead of leaving the screen. Returning true tells Android the press was handled.
+  useEffect(() => {
+    if (!open) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      setOpen(false);
+      return true;
+    });
+    return () => sub.remove();
+  }, [open]);
 
   const handleSignOut = async () => {
     // local: sign out of this phone only; other devices stay signed in (matches Profile's sign-out).
@@ -49,16 +60,21 @@ export default function SideMenu() {
   return (
     <>
       <GlassView style={[styles.menuButton, { top: insets.top + 12 }]} glassEffectStyle="regular" isInteractive>
-        <Pressable style={styles.menuPress} onPress={() => setOpen(true)}>
+        <Pressable style={styles.menuPress} onPress={() => setOpen(true)}
+          accessibilityRole="button" accessibilityLabel="Open menu">
           <Ionicons name="menu" size={22} color={colors.ink} />
         </Pressable>
       </GlassView>
 
       {/* pointerEvents: while closed, the invisible overlay must not block taps on the screen below. */}
-      <View style={StyleSheet.absoluteFill} pointerEvents={open ? "auto" : "none"}>
+      {/* While closed, also hide it from screen readers: being off-screen doesn't, so VoiceOver
+          could still reach "Sign Out". (accessibilityElementsHidden: iOS; importantForAccessibility: Android.) */}
+      <View style={StyleSheet.absoluteFill} pointerEvents={open ? "auto" : "none"}
+        accessibilityElementsHidden={!open} importantForAccessibility={open ? "auto" : "no-hide-descendants"}>
         {/* Dimmed backdrop; tapping it closes the menu. */}
         <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, { opacity: progress }]}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setOpen(false)} />
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setOpen(false)}
+            accessibilityRole="button" accessibilityLabel="Close menu" />
         </Animated.View>
 
         <Animated.View
@@ -70,13 +86,13 @@ export default function SideMenu() {
         >
           <Text style={styles.appName}>SaffBuddy</Text>
 
-          <Pressable style={styles.item} onPress={goToProfile}>
+          <Pressable style={styles.item} onPress={goToProfile} accessibilityRole="button">
             <Ionicons name="person-circle-outline" size={24} color={colors.ink} />
             <Text style={styles.itemText}>Profile</Text>
           </Pressable>
 
           {/* Pushed to the bottom by marginTop: "auto". */}
-          <Pressable style={[styles.item, styles.signOut]} onPress={handleSignOut}>
+          <Pressable style={[styles.item, styles.signOut]} onPress={handleSignOut} accessibilityRole="button">
             <Ionicons name="log-out-outline" size={24} color={colors.scarlet} />
             <Text style={[styles.itemText, styles.signOutText]}>Sign Out</Text>
           </Pressable>
