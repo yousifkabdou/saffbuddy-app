@@ -18,12 +18,13 @@ export default function StatusOverlay() {
   return (
     // box-none: this container ignores touches, so the screen below stays usable; only the bars catch taps.
     <View style={[styles.overlay, { top: insets.top + 8 }]} pointerEvents="box-none">
+      {/* "Couldn't load", not "...requests": it also shows when rooms or the profile failed. */}
       {loadFailed &&
-      <Pressable style={[styles.bar, styles.banner]} onPress={retryLoads} disabled={retrying}>
+      <Pressable style={[styles.bar, styles.banner]} onPress={() => retryLoads()} disabled={retrying}>
         {retrying
           ? <ActivityIndicator size="small" color={colors.paper} />
           : <Ionicons name="cloud-offline-outline" size={18} color={colors.paper} />}
-        <Text style={styles.text}>{retrying ? "Retrying…" : "Couldn't load requests · Tap to retry"}</Text>
+        <Text style={styles.text}>{retrying ? "Retrying…" : "Couldn't load · Tap to retry"}</Text>
       </Pressable>}
 
       {toast &&

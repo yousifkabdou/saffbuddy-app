@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@jest/globals";
 import { actionErrorMessage, isNetworkError, NOTHING_DELETED_ERROR } from "@/lib/errors";
+import { OFFLINE_ERROR } from "@/lib/network";
 
 const NO_CONNECTION = "No connection. Check your internet and try again.";
 
@@ -13,6 +14,14 @@ describe("isNetworkError", () => {
   });
   it("is false for an unknown error with no code", () => {
     expect(isNetworkError({ message: "something odd" })).toBe(false);
+  });
+  it("is true for timeouts, including our own fetch timeout (an abort)", () => {
+    expect(isNetworkError({ message: "The request timed out." })).toBe(true);
+    expect(isNetworkError({ message: "timeout" })).toBe(true);
+    expect(isNetworkError({ code: "", message: "AbortError: Aborted" })).toBe(true);
+  });
+  it("is true for the error the app reports when the phone is offline", () => {
+    expect(isNetworkError(OFFLINE_ERROR)).toBe(true);
   });
 });
 

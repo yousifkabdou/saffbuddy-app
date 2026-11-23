@@ -5,18 +5,19 @@ import { Text } from "@/components/AppText";
 
 type Props = {
   message: string;     // what failed, e.g. "Couldn't load your profile"
+  hint?: string;       // what to do about it; defaults to the connection hint
   onRetry: () => void;
   retrying: boolean;   // true while the retry is running: shows a spinner and ignores extra taps
 };
 
 // Full-screen "something failed to load" state with a retry button.
 // Used before the tabs exist (so the StatusOverlay banner isn't available yet).
-export default function LoadFailedScreen({ message, onRetry, retrying }: Props) {
+export default function LoadFailedScreen({ message, hint, onRetry, retrying }: Props) {
   return (
     <View style={styles.screen}>
       <Ionicons name="cloud-offline-outline" size={40} color={colors.grey} />
       <Text style={styles.message}>{message}</Text>
-      <Text style={styles.hint}>Check your connection and try again</Text>
+      <Text style={styles.hint}>{hint ?? "Check your connection and try again"}</Text>
       <Pressable style={[styles.button, retrying && styles.buttonDisabled]} onPress={onRetry} disabled={retrying}>
         {retrying
           ? <ActivityIndicator size="small" color={colors.paper} />

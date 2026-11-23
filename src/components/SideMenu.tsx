@@ -1,3 +1,4 @@
+import { useSharedRequests } from "@/context/RequestsContext";
 import { supabase } from "@/lib/supabase";
 import { colors } from "@/theme";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -16,6 +17,7 @@ export default function SideMenu() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const { showToast } = useSharedRequests();
   // 0 = closed (menu off-screen to the left), 1 = open. Animated so it slides instead of popping in.
   // Held in state (created once by the initializer, never set again) rather than a ref, because render
   // reads it; reading ref.current during render breaks the React Compiler's assumptions.
@@ -26,12 +28,17 @@ export default function SideMenu() {
   }, [open, progress]);
 
   const handleSignOut = async () => {
-    const {error} = await supabase.auth.signOut();
+    // local: sign out of this phone only; other devices stay signed in (matches Profile's sign-out).
+    const {error} = await supabase.auth.signOut({ scope: "local" });
 
     if (error){
       console.log(error.message);
+      // Offline with an expired token, auth-js can't load the session and keeps it, so the user
+      // is still signed in. Say so instead of silently doing nothing.
+      setOpen(false);
+      showToast("Couldn't sign out. Check your connection and try again.");
     }
-    // No navigation here: the tabs layout's onAuthStateChange sees the session end and redirects to login.
+    // No navigation on success: the tabs layout's onAuthStateChange sees the session end and redirects to login.
   };
 
   const goToProfile = () => {
