@@ -18,13 +18,14 @@ function useSharedRequestsState() {
   const [gender, setGender] = useState<"Men" | "Women" | null>(null);
   const [basicsFailed, setBasicsFailed] = useState(false); // loading rooms or gender failed
 
-  // The toast: a short message about an action that failed. It hides itself after TOAST_MS;
-  // a new message replaces the old one and restarts the timer.
-  const [toast, setToast] = useState<string | null>(null);
+  // The toast: a short message, usually about an action that failed ("error"), or a kind word
+  // after Done ("success"). It hides itself after TOAST_MS; a new message replaces the old one
+  // and restarts the timer.
+  const [toast, setToast] = useState<{ message: string; kind: "error" | "success" } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const showToast = (message: string) => {
+  const showToast = (message: string, kind: "error" | "success" = "error") => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
-    setToast(message);
+    setToast({ message, kind });
     toastTimer.current = setTimeout(() => setToast(null), TOAST_MS);
   };
   const hideToast = () => {
@@ -40,10 +41,15 @@ function useSharedRequestsState() {
   // A failed post/join/leave/cancel becomes a toast with a message for that action (src/lib/errors.ts).
   const requestsState = useRequests(gender, (action, error) => showToast(actionErrorMessage(action, error)));
   const { requests, myRequestId, myJoinedId, joinRequest, requestsFailed, joinsFailed, loadRequests, loadJoins } = requestsState;
-  const [now, setNow] = useState(Date.now()); // the clock, refreshed every 30s so time-based UI updates on its own
+  const [now, setNow] = useState(() => Date.now()); // the clock, refreshed every 30s so time-based UI updates on its own
   // The request the user tapped Done on. Done deletes nothing: the server deletes the request
   // later and counts it in the tally (docs/adr/0001), so this only hides it on this phone.
   const [doneId, setDoneId] = useState<string | null>(null);
+  // Tapping Done (panel or Requests tab): hide the request and say a kind word.
+  const markDone = (requestId: string) => {
+    setDoneId(requestId);
+    showToast("May Allah accept your prayers!", "success");
+  };
   // A room another tab wants the map to open. The map opens its panel, then sets this back to null,
   // so it acts like a one-time message instead of something that sticks to the screen.
   const [openRoomId, setOpenRoomId] = useState<string | null>(null);
@@ -73,6 +79,7 @@ function useSharedRequestsState() {
     setBasicsFailed(!!roomsResult.error || !!genderResult.error);
   };
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch on mount; state is only set after the awaits, when data arrives
     loadBasics();
   }, []);
 
@@ -131,7 +138,7 @@ function useSharedRequestsState() {
 
   return {
     ...requestsState,
-    rooms, gender, now, doneId, setDoneId, toast, hideToast, loadFailed, retryLoads, retrying, openRoomId, setOpenRoomId, focusRoomId, setFocusRoomId,
+    rooms, gender, now, doneId, markDone, toast, hideToast, loadFailed, retryLoads, retrying, openRoomId, setOpenRoomId, focusRoomId, setFocusRoomId,
     myRequestRoom, myJoinedRoom, activeRequestRow, activeJoinedRow, finishingRow,
     handleJoin,
   };
