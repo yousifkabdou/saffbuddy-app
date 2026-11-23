@@ -1,3 +1,4 @@
+import { formatCampusTime } from "@/lib/campusTime";
 import { formatCountdown, nextPrayer } from "@/lib/prayerTimes";
 import { colors } from "@/theme";
 import { GlassView } from "expo-glass-effect";
@@ -19,7 +20,7 @@ export default function PrayerCountdown() {
   }, []);
 
   const prayer = nextPrayer(now);
-  const startTime = prayer.time.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const startTime = formatCampusTime(prayer.time);
 
   return (
     <View style={[styles.wrapper, { top: insets.top + 8 }]} pointerEvents="none">

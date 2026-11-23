@@ -1,3 +1,5 @@
+import { formatCampusTime } from "@/lib/campusTime";
+
 // Time rules for requests. "In progress" and "expired" aren't stored anywhere;
 // they're worked out from the start time and the current clock.
 
@@ -19,9 +21,9 @@ export const SERVER_DELETE_MINUTES = 10;
 
 const MINUTE = 60 * 1000;
 
-// "2026-11-11T18:02:00Z" -> "1:02 PM" in the phone's time zone.
+// "2026-11-11T18:02:00Z" -> "1:02 PM" in campus time, like the prayer times (src/lib/campusTime.ts).
 export function formatTime(isoTime: string) {
-  return new Date(isoTime).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return formatCampusTime(new Date(isoTime));
 }
 
 // When the user is free to post or join again: the server deletes at
