@@ -1,0 +1,181 @@
+2026-11-22T22:30:19 run 1 ok, 2.1 min, turns=27, in=26 cache_read=803202 cache_write=49542 out=11641, api-equiv=$0.79 :: I audited Area 2 (Auth flow) and found 5 problems: 1 medium, 4 low. Area 2 is the first unchecked line in the checklist; Area 1 (Baseline) sits at the bottom of the file, so it's still unchecked. The findings are in `docs/audit/findings.md` and Area 2 is ticked in `docs/audit/checklist.md`. I didn't touch any other file or run typecheck, lint or tests, since this pass only reports.
+
+The login check isn't in `src/app/_layout.tsx` (that file only loads fonts). It lives in `src/app/(tabs)/_layout.tsx`, so I audited that file instead.
+
+- **[medium] Offline launch sends signed-in users to the login screen.** If the app is opened offline more than an hour after its last use, the attempt to renew the session fails with a network error. The layout treats that error as "not signed in" and redirects to login, even though the session is still saved on the phone. The user can't sign in offline and has to redo the email code later. I checked this against the Supabase library code in `node_modules`. Fix: on a network error, show the Retry screen instead of redirecting.
+- **[low] Sign Out can silently do nothing** in that same offline case. The menu stays open and no message appears. One product question: the menu signs you out on every device, while the Profile screen signs out only this phone. I'd recommend making both this-phone-only.
+- **[low] Blank white screen on slow Wi-Fi** while the profile check runs. There's no spinner and no timeout.
+- **[low] A missing Supabase URL or key setting crashes the app at launch** with an unclear error. This would hit the first EAS build if the settings aren't added there.
+- **[low] The login/setup/tabs redirect logic has no tests.** Fix: move it into a small function that can be tested.
+
+I also checked the login screen's resend countdown, double-tap protection, the locked email after a code is sent, error messages and cleanup. All of it held up.
+2026-11-22T22:33:21 run 1 ok, 1.9 min, turns=23, in=20 cache_read=606358 cache_write=43493 out=10216, api-equiv=$0.67 :: I audited Area 3 (Profile, setup, delete account) and found 5 problems: 1 medium and 4 low. Area 3 was the first unchecked line in the checklist; Area 1 (Baseline) is still unchecked at the bottom. The findings are in `docs/audit/findings.md` and Area 3 is ticked in `docs/audit/checklist.md`. I didn't change any other file or run typecheck, lint or tests, since this pass only reports.
+
+- **[medium] The Setup screen's Save can show "Error code: undefined" and can be tapped repeatedly.** If the save fails offline, the user sees "Something went wrong please try again. Error code: undefined", which tells them nothing. The button also stays active while saving, so repeated taps on slow Wi-Fi send the save again each time. Fix: add a saving state and an offline check, and show the same plain messages the Profile screen uses.
+- **[low] The Profile screen can spin forever.** This happens when no session can be loaded, for example the app resumed offline after more than an hour. Fix: show the existing "Couldn't load your profile" message instead.
+- **[low] Delete account sends the user to the login screen twice at the same moment.** The screen navigates to login itself, and the tabs layout also redirects when sign-out happens. This could cause a flicker or two login screens stacked. I couldn't confirm which without running the app, so it needs a phone test. Fix: keep only one of the two, preferably the layout's redirect, which is what Sign Out already uses.
+- **[low] A comment in `profile.tsx` gives the wrong reason.** It says signing out with `scope: "local"` doesn't contact the server, but it does. The code works; only the comment is wrong. Fix: correct the comment so you don't learn it the wrong way.
+- **[low] The name rule exists twice and neither copy has tests.** It's in `setup.tsx` and in the database constraint, and they must match exactly. Fix: move it into `src/lib/` and add Jest tests. One product question for you: names with accented letters (é, ü, ç) are rejected today. I'd recommend allowing them, but that means changing the database constraint, which is a security-tier change.
+
+The `delete_my_account()` function and its tests held up. It can only delete the caller's own account, it refuses signed-out callers, and the deletions carry through to the user's profile, request and joins. The anonymous prayer counts aren't touched, so ADR 0001 still holds.
+2026-11-22T22:38:47 run 1 ok, 1.8 min, turns=18, in=20 cache_read=574123 cache_write=35003 out=9127, api-equiv=$0.58 :: I've finished Area 4 (the security SQL for profiles and the OSU email check) and added the findings to `docs/audit/findings.md`. I changed only that file and ticked Area 4 in `docs/audit/checklist.md`.
+
+Nothing leaks today: the row-level security rules block reading other users' profiles and changing or deleting rows. All four findings are low severity:
+
+1. **The grant line may not limit anything** (`supabase/profile.sql:9`). Supabase projects usually give signed-in and anonymous users full table rights by default, and this line adds rights without removing any. So it's the row-level security rules, not the grant, that block updates and deletes. That conflicts with comments in `profile.tsx:17` and `live_updates.sql:73` that say "no update grant". The fix is to put `revoke all` before the grant and add a test. This matters more for Area 5: `requests.sql:12` relies on a column grant to hide `requester`, and that does nothing if table-wide read access is already there.
+2. **The profiles rules have no tests.** Nothing proves that another user, or someone not signed in, gets zero rows, or that gender can't be changed or deleted. Every gender check in the other tables depends on those rules. The finding lists the test cases.
+3. **A user can switch their account to a non-OSU email after sign-up.** The OSU check runs only when an account is created, so changing the email through Supabase's sign-in system later skips it. The fix is a database trigger that blocks the change, or writing it down as an accepted limitation.
+4. **The OSU email check has no `search_path` setting and no tests.** It's harmless today, but Supabase's database checker will flag it and nothing protects the matching rule. The finding lists the test cases.
+
+Fixes 1 and 3 change grants or security rules, so per CLAUDE.md you decide on them before any SQL is written.
+
+Before acting on finding 1, run this in the Supabase SQL editor to see what the live database actually has:
+
+`select grantee, privilege_type from information_schema.role_table_grants where table_name = 'profiles';`
+
+I didn't run typecheck, lint or the tests because no code changed.
+2026-11-22T22:40:52 run 2 ok, 2.1 min, turns=25, in=26 cache_read=842992 cache_write=44323 out=11253, api-equiv=$0.75 :: I audited Area 5 (the requests and joiners security SQL) and found five problems: one medium, four low. I only read code; nothing was run against the live database. They're written up in `docs/audit/findings.md` under "Area 5", and Area 5 is ticked in `docs/audit/checklist.md`. I didn't change any other file.
+
+1. **[medium] Requester ids may be readable by other users** (`supabase/requests.sql:12`). The file grants select on only some columns of `requests` to hide `requester`, but never takes away table-wide access first. In Postgres, table-wide select covers every column, and Supabase usually gives it on new tables by default. If the live database has it, any signed-in user can read the user id behind every same-gender request and follow one person's prayer times and rooms. Your code comments suggest it may already be locked down, but nothing in the repo makes sure of that. You can check with one query (it's in the finding); both results should be false.
+2. **[low] No tests for the requests and joiners rules.** The finding lists the cases a test file should cover, including the other-gender and anonymous-user cases.
+3. **[low] The SQL files can't be run to rebuild the database.** `requests.sql` needs a function that's created in `joins.sql`, and `joins.sql` needs the `requests` table, so either order fails partway. The README doesn't give a setup order either.
+4. **[low] A user can hold a request and join another one at the same time.** This takes two phones on one account (or a script) tapping Post and Join at the same moment. The fix is a lock that makes the second action wait and re-check.
+5. **[low] A phone clock that's off by more than a minute breaks posting.** The app sets the start time from the phone's clock, and the database allows only one minute of slack. A phone running 2 minutes slow can't post "in 5 minutes" and gets a generic error. The fix is to send only the number of minutes and let the server set the time.
+
+Fixes 1, 4 and 5 change security rules, so they need your go-ahead. The rest of these rules check out (gender separation, own-row-only joins, the helper functions, the 2-minute join cutoff); the finding ends with a "Checked and fine" list.
+2026-11-22T22:42:32 run 3 ok, 1.7 min, turns=15, in=14 cache_read=405224 cache_write=43855 out=8843, api-equiv=$0.61 :: I audited Area 6 (`expiry.sql`, `tally.sql`, `live_updates.sql`, `rooms.sql` and their tests) and added 4 low-severity findings to `docs/audit/findings.md`. I also ticked Area 6 in the checklist. I didn't change any other files.
+
+1. **A comment in `expiry.sql` is wrong.** It says the tally insert and the delete always pick the same requests. They can differ: if someone leaves or cancels in the few milliseconds between them, the tally counts it. That's very rare and off by at most one, but the comment teaches the wrong thing. The fix is to lock the expiring rows at the start of the function.
+2. **The expiry test fails if you run it in the first 11 minutes after midnight Eastern.** Its test request lands in yesterday's tally row, but the test only looks at today's.
+3. **Nothing tests who can read or write the tally or the rooms.** There's no negative test for gender separation on rooms or for anon access, and nothing checks that execute on `expire_requests()` is revoked.
+4. **The live pings leave timestamps in the database that the docs don't mention.** Supabase keeps each ping in `realtime.messages` for a few days, by my understanding about 3; check that in the dashboard. Each row holds only a timestamp and which gender's channel it went to, with no user, room or request. But ADR 0001 and the README say the daily counts are the only thing kept. I suggest adding a line to the ADR, and Area 12 should check the privacy policy for the same gap.
+
+Everything else in the area looked correct: the tally math, the Eastern day handling across DST, the grants, the gender checks on the pings, and the rooms policy.
+2026-11-22T22:44:43 run 4 ok, 2.2 min, turns=21, in=20 cache_read=758330 cache_write=69124 out=11936, api-equiv=$0.94 :: I audited Area 7 (Requests client) and added six findings to `docs/audit/findings.md`: one medium and five low. I also ticked the box in `checklist.md`. I didn't change any other file, and I didn't run typecheck, lint or tests, since this pass was report-only.
+
+- **[medium] A second tap shows an error even when the first one worked.** Post, Join, Leave and Cancel don't block repeat taps while they're sending. The map panel also shows the Request button again before the post has finished. On slow Wi-Fi, a second tap gets a "You already have a request" or "Couldn't cancel" message, even though the first tap succeeded.
+- **[low] The clock is up to 30 seconds old when the app comes back from the background.** A request that has already started can still show Join, and tapping it gets refused. The fix is to update the clock when the app becomes active again.
+- **[low] Join and Leave don't update their own state right away**, the way Cancel does. If the refetch after them fails, the screen shows the old button, and the next tap gets a misleading error.
+- **[low] Posting with no gender loaded fails with the wrong message.** If the gender load failed (or there's no session), posting sends `gender: null`. The database refuses it, and the user is told "You may already be in another request."
+- **[low] There's no "loading" state on first load.** The Requests tab can say "No requests right now", and the map can offer Request, before the data has arrived.
+- **[low] No tests for which button each screen shows.** The "active / finishing / blocked from joining" rules in `RequestsContext` aren't tested. I proposed moving them into a pure function in `src/lib/` with Jest cases.
+
+The loads that can overlap, live-update cleanup, token refresh for live updates, starting fresh after sign-out, and expiry timing all held up. Those are listed under "Checked and fine". Area 8 (prayer times and time zones) is next.
+2026-11-22T22:46:55 run 5 ok, 2.2 min, turns=22, in=30 cache_read=937113 cache_write=43886 out=11672, api-equiv=$0.77 :: I audited Area 8 (prayer times and time zones) and found three problems, all low severity. They're written up in `docs/audit/findings.md` under `## Area 8`, and I ticked the area off in `docs/audit/checklist.md`. I didn't change any other file in the repo.
+
+1. **Phones set to a time zone east of Ohio get the wrong evening prayers** (`src/lib/prayerTimes.ts:34-39`, `times.tsx:21`). The prayer-time library takes the day from the phone's own date. So once it's past midnight on the phone but still evening in Columbus, it skips tonight's Maghrib and Isha and counts down to tomorrow's Fajr. The Times tab also shows tomorrow's date. In summer this happens every evening even on a phone set to UTC. Separately, times are shown in the phone's time zone, while the note says "Calculated for OSU campus".
+   - **Fix:** work out the campus date in `America/New_York` and calculate from that.
+   - **Decision for you:** should times show in campus time or the phone's time? I recommend campus time, since the app only serves OSU.
+2. **The prayer-time tests depend on the computer's time zone.** Your laptop runs them in Eastern time, but GitHub CI runs them in UTC. They only pass in both because every test date is in November or December. Nothing tests a summer evening or the two daylight-saving change days.
+   - **Fix:** set the tests' time zone to Eastern in one Jest setup file, then add tests for a summer evening, both change days, and a phone in another time zone.
+3. **After coming back to the app, the Times tab can show yesterday's timetable for up to 30 seconds.** Timers pause while the app is in the background, so the screen keeps its old time until the next 30-second update.
+   - **Fix:** refresh the time when the app becomes active again. This is the same fix as the request-clock problem from Area 7.
+
+I worked out the first problem by reading the library's source. I tried to confirm it by running the library under other time zones, but that needed your approval, which I couldn't get in an unattended pass. Area 8 had no database or security-rule changes.
+2026-11-22T22:49:07 run 6 ok, 2.2 min, turns=24, in=22 cache_read=904818 cache_write=69028 out=11984, api-equiv=$0.97 :: I audited area 9 (map and location) and found 7 problems: 2 medium, 5 low. They're added to `docs/audit/findings.md` under "Area 9", and area 9 is ticked in the checklist. I only changed those two files. Nothing else was run, since this pass was report-only.
+
+**Medium**
+- **Cancel or Leave can still delete a prayer after it has started.** If the "Cancel your request?" or "Leave this request?" question is open when the start time passes, tapping Yes still deletes the request, so that prayer is never counted in the daily totals. The database doesn't check the time when someone cancels or leaves. The Requests tab's pop-up has the same gap.
+- **The README contradicts the app on location.** `README.md:30` and the comment at `src/lib/directions.ts:6` say the app never reads your location. Since ADR 0002, the map asks for location permission and keeps your position in memory to move the map.
+
+**Low**
+- **Location permission is only checked once, when the map first opens.** Turning location on or off in Settings is missed until the app restarts. The locate button does nothing, with no message, when there's no GPS fix. The permission call also has no error handling.
+- **A delayed marker selection can reopen the panel.** On this branch's uncommitted fix, a delayed selection (the new 200 ms wait) isn't cancelled when the panel is closed or another room is opened, so the panel can reopen up to 200 ms later. That's the same "highlight jumps" problem the branch is fixing.
+- **`index.tsx:184` can reset the time picker.** That line may see the previously selected room if Apple's two tap events arrive before React re-renders. Then a quick tap on Request opens the time picker and closes it again. I couldn't confirm the event order, so it needs a phone test. Changing that line to `if (recentPress) return;` avoids it.
+- **`is_open` isn't used anywhere.** A room marked closed still shows on the map and still accepts requests.
+- **A sortRooms test comment is out of date.** It says requests expire after 15 minutes; the real value is 8. No test checks the 8-minute boundary.
+
+There are two product questions in the findings:
+- **Server check on cancel and leave:** should the database refuse cancelling or leaving once a prayer has started? I recommend yes, since the daily counts depend on it. It would be a security-tier policy change.
+- **Closed rooms:** what should `is_open = false` do? I recommend hiding closed rooms and refusing requests for them.
+
+Nothing breaks ADR 0002: your position is only kept in memory on the phone. It's never put in state, logged or sent anywhere.
+2026-11-22T22:51:25 run 7 ok, 2.3 min, turns=26, in=26 cache_read=1051640 cache_write=75622 out=12501, api-equiv=$1.07 :: Area 10 (Network and error handling): 1 medium, 3 low; written to `docs/audit/findings.md` and ticked in `docs/audit/checklist.md`.
+2026-11-22T22:53:41 run 8 ok, 2.3 min, turns=22, in=20 cache_read=765729 cache_write=61419 out=13770, api-equiv=$0.92 :: I audited Area 11 (Remaining UI), added it to `docs/audit/findings.md` and ticked it in the checklist. Those are the only two files I changed. I didn't run typecheck, lint or tests, since this pass only writes the report.
+
+I found 6 problems, 1 medium and 5 low:
+
+- **[medium] Dark mode looks broken.** `app.json` tells the phone the app supports dark mode, but every colour is light-only and the app never sets the status bar style. On a phone in dark mode:
+  - the clock and battery text turns white and can't be seen on the white screens;
+  - the glass title, tab bar and menu button turn dark while their text and icons stay dark.
+
+  The fix for v1 is to set `"userInterfaceStyle": "light"` and add `<StatusBar style="dark" />`.
+- **[low] Screen readers can't use the main buttons.** The menu button and the three tabs are icons with no labels. Also, the closed side menu is only moved off-screen, so VoiceOver can still reach "Sign Out".
+- **[low] Android back button.** It doesn't close the side menu; it leaves the tab or closes the app instead.
+- **[low] Tab bar crash risk.** Adding any new file to `(tabs)/` without an icon entry crashes the whole tab bar, and typecheck won't catch it.
+- **[low] Hard-to-read grey.** `greyLight` (`#a0a0a0`) text and the grey "finishing" button are well below the usual readability minimum for text.
+- **[low] Font fallback.** If the fonts fail to load, all text drops to regular weight, not the fallback the comment promises. The fonts ship inside the app, so this is very unlikely.
+
+To test on your phone:
+- the app with dark mode turned on;
+- VoiceOver on the tab bar and the closed menu, to see whether the hidden "Sign Out" can actually be triggered.
+
+The next unchecked area is 12, the privacy policy compared with what the app actually does.
+2026-11-22T22:56:21 run 9 ok, 2.7 min, turns=33, in=32 cache_read=1152470 cache_write=71650 out=14492, api-equiv=$1.09 :: I finished Area 12 (privacy policy vs. what the app really does) and added six findings to `docs/audit/findings.md`. The checklist box is ticked. No other files were changed and no code was fixed.
+
+**Medium**
+- **Deleted accounts leave their email behind.** Supabase keeps a sign-in log table inside your own database, `auth.audit_log_entries`. Each row holds the email, the IP address and a timestamp, and deleting the account doesn't remove these rows. As far as I know nothing clears them automatically. The policy says deletion removes your email. The fix is either a Supabase Auth setting or a scheduled cleanup job. The cleanup job is a database change, so it would be done separately with its own tests.
+- **The policy isn't ready for the App Store.** `[DATE]`, `[REGION]` and `[CONTACT EMAIL]` are still blank, and nothing in the app links to the policy. Apple's review rules (5.1.1) ask for a link inside the app, so as things stand the build would likely be rejected.
+
+**Low**
+- **Server logs record when.** The policy says "we don't record which rooms you went to or when." Supabase keeps a few days of logs with the time, IP and account ID of each request, and the live-update messages also have timestamps. None of these include a room, so the "which rooms" part is still true.
+- **Apple and Google aren't listed.** The map comes from Apple Maps, or Google on Android. When someone taps Directions, the room's location goes to Apple Maps or Google Maps, and the policy doesn't say so.
+- **"How many people took part" overstates the counts.** They measure who joined, not who showed up (ADR 0001).
+- **The login saved on the phone isn't mentioned.** The app keeps your sign-in on the phone, in a file that isn't encrypted, and the policy doesn't say that.
+
+Two of these depend on things I couldn't see from the repo. Your dashboard holds the answers:
+- **Audit log:** run `select count(*), min(created_at) from auth.audit_log_entries;` in the SQL editor to see what's being kept.
+- **Logs:** open Logs ? API to check whether each request row includes the user ID, and how long your plan keeps logs.
+
+The rest of the policy matches the code. That includes the location promise, which follows ADR 0002, and gender separation. It also includes the 10-minute expiry, the daily counts and what account deletion removes. The claim "other users never see your name or email" still depends on the `requester` grant being set correctly in the live database, which was the first finding in Area 5.
+
+The next area is 13 (config and repo hygiene).
+2026-11-22T22:58:28 run 10 ok, 2.1 min, turns=29, in=26 cache_read=851125 cache_write=63739 out=11109, api-equiv=$0.90 :: I finished area 13 (config and repo hygiene). I added nine findings to `docs/audit/findings.md` and ticked the area in `docs/audit/checklist.md`; I didn't touch any other file.
+
+**Medium, both would block the App Store launch:**
+- **App Review can't sign in.** Only @osu.edu emails can sign up, and the login code goes to an inbox the reviewer can't read. Apple requires a working demo account, so the first submission would be rejected. This one needs a product decision from you. My recommendation is one review account with a password-only sign-in path. That's security tier, so it gets designed and tested before anything changes.
+- **The app still looks like Expo's starter template.** The home-screen name is "saffbuddy-app", and the icon, iOS icon and splash screen are all Expo's defaults. You'll need to supply the real artwork.
+
+**Low:**
+- No bundle ID or `eas.json` yet. The first `eas build` will ask for a bundle ID, and whatever you pick there can't be changed later. The export-compliance setting is also missing, so every TestFlight build will be held until you answer that question.
+- If you ship Android, the map would be blank in a release build because there's no Google Maps API key. You can skip this if v1 is iOS-only.
+- `npm run reset-project` points to an Expo template script that isn't in the repo.
+- Some packages aren't used anywhere: `expo-device` and `expo-image` can go now. `react-dom` and `react-native-web` can go too if web isn't a target.
+- `.gitignore` covers `.env.local` but not `.env`. Nothing leaks today, but a future secret key put in `.env` could get pushed to GitHub.
+- The CI workflow doesn't limit what its GitHub token is allowed to do.
+- The README's status line still says prayer requests are "being built next".
+
+No secrets are committed. I didn't run `npx expo install --check` (it needs the network), so whether the installed versions match the Expo SDK isn't checked yet.
+
+The next unchecked area is 14, test coverage gaps.
+2026-11-22T23:00:45 run 11 ok, 2.3 min, turns=28, in=30 cache_read=1311845 cache_write=77611 out=12514, api-equiv=$1.13 :: I audited Area 14 (test coverage gaps) and added six findings to `docs/audit/findings.md`, all low severity. I didn't change any code, and I left out gaps that earlier areas already listed. I didn't run typecheck, lint or the tests. That's Area 1, the last box still open on the checklist.
+
+1. **The SQL security tests never run on their own.** You have to paste them into the SQL Editor, and CI only runs Jest. A failed check just prints a "FAIL" row instead of raising an error, so the run still looks like it succeeded. That goes for every negative-case test too.
+2. **The delete-account test re-creates its own copy of `delete_my_account()` before testing it.** So it never checks the version that's live in the database. If that one lost `search_path = ''` or the anon revoke, the test would still pass.
+3. **Some constants in the app have to match numbers in the SQL, and only comments keep them in step.** These are `JOIN_GRACE_MINUTES`, `SERVER_DELETE_MINUTES`, `START_OFFSETS` and `EXPIRY_MINUTES`. The expiry interval has already changed once. The fix is a Jest test that reads the SQL files and fails if the numbers differ.
+4. **The expiry test can't catch a miscount.** Its only counted request has one joiner, so counting one congregation per joiner instead of one per request gives the same result. The test also doesn't check the totals for two requests in the same room on the same day, or reliably exercise the path that updates an existing tally row.
+5. **`useRequests` has no tests**, including the check that stops a slower, older load from overwriting newer data. Testing it needs `@testing-library/react-native` added as a dev dependency.
+6. **A few branches have no test case:** the timeout and offline patterns in `isNetworkError`, two `authErrors` messages, `otherPerson`, and the URLs `openDirections` builds.
+
+I ticked Area 14 in `docs/audit/checklist.md`.
+2026-11-22T23:02:34 run 12 ok, 1.8 min, turns=32, in=30 cache_read=887097 cache_write=42792 out=8970, api-equiv=$0.70 :: I audited Area 1 (Baseline), the last unchecked area, so every area on the checklist is now ticked. All three checks pass with no errors or warnings, and I found one new low-severity problem.
+
+| Check | Result |
+|---|---|
+| `npm run typecheck` | 0 errors, 0 warnings |
+| `npm run lint` | 0 errors, 0 warnings |
+| `npm test` | 6 suites, 60 tests, all passed (2.2 s); no skipped or `.only` tests |
+
+These results cover your working tree on `fix/map-highlight-jump`, which includes the uncommitted changes to `src/app/(tabs)/index.tsx`. They don't cover `main`.
+
+**Flakiness:** I couldn't rerun the prayer-time tests in other time zones because the sandbox needed approval for that command. Working it through by hand, every current assertion holds in UTC (what CI uses), UTC+9, UTC+13 and UTC-10, so CI isn't flaky today. Area 8 already reported that these tests depend on the machine's time zone, so I didn't repeat it.
+
+**New finding (low): two prayer-time tests can't fail the way their names suggest.**
+- "agrees with nextPrayer" checks `nextPrayer` against `dailyTimes`, but `nextPrayer` is built from `dailyTimes`, so it can't catch a wrong time.
+- "is always in the future" checks only 1 pm, so it never reaches the after-Isha path.
+- No test compares a prayer time to a known value. A wrong madhab or swapped campus coordinates would move the times shown in the app, and all 60 tests would still pass.
+- **Proposed fix:** add one test that checks the six times for 2026-11-20 in Columbus time against a published ISNA timetable. Then change the "future" test to try times every 30 minutes across a whole day.
+
+I only changed `docs/audit/findings.md` (new `## Area 1: Baseline` section) and `docs/audit/checklist.md` (Area 1 ticked).
+
+One thing I noticed in passing: a "Checked and fine" paragraph from Area 13 sits under the Area 14 heading in `findings.md`. I left it in place, so the new section comes after it.
