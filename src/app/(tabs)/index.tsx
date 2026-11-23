@@ -6,21 +6,16 @@ import { useSharedRequests } from "@/context/RequestsContext";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { Room } from "@/data/room";
 import { openDirections } from "@/lib/directions";
-import { formatTime, freeAgainAt, isExpired, isInProgress } from "@/lib/requestTime";
+import { formatTime, freeAgainAt, isExpired, isInProgress, START_OFFSETS } from "@/lib/requestTime";
 import { otherPerson } from "@/lib/wording";
 import { useRouter } from "expo-router";
 import { useBottomTabBarHeight } from "expo-router/js-tabs";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import { Text } from "@/components/AppText";
 import MapView, { MapMarker, Marker } from "react-native-maps";
 import * as Location from "expo-location";
 import { GlassView } from "expo-glass-effect";
-
-// Start time choices, in minutes from now. No "Now": a request needs a few minutes
-// for anyone to see it and walk over. The requests insert policy only accepts
-// start times 5-45 minutes ahead (with 1 min slack), so keep these in sync.
-const START_OFFSETS = [5, 10, 15, 30, 45];
 
 // Where the map starts, and where the campus button takes you back to.
 const CAMPUS_REGION = { latitude: 40.000632, longitude: -83.013325, latitudeDelta: 0.013, longitudeDelta: 0.013 };
@@ -50,7 +45,7 @@ export default function Index() {
   const {
     rooms, gender, now, requests, counts, markDone,
     myRequestRoom, myJoinedRoom, activeRequestRow, activeJoinedRow, finishingRow,
-    postRequest, cancelRequest, leaveRequest, loadRequests, loadJoins,
+    postRequest, cancelRequest, leaveRequest, loadRequests, loadJoins, busy, loaded,
     openRoomId, setOpenRoomId, setFocusRoomId,
   } = useSharedRequests();
   const router = useRouter();
@@ -90,6 +85,14 @@ export default function Index() {
     const northToSouth = [...rooms].sort((a, b) => b.latitude - a.latitude || a.id.localeCompare(b.id));
     return Object.fromEntries(northToSouth.map((r, i) => [r.id, i + 1]));
   }, [rooms]);
+
+  // A Cancel/Leave confirm only makes sense while that request can still be cancelled or left.
+  // If it starts (or disappears) while the confirm is open, show the buttons again, which now
+  // offer Done. Worked out on every render from the clock, so no effect is needed.
+  const canCancel = activeRequestRow !== undefined && !isInProgress(activeRequestRow.start_time, now);
+  const canLeave = activeJoinedRow !== undefined && !isInProgress(activeJoinedRow.start_time, now);
+  const mode =
+    (panelMode === "cancel" && !canCancel) || (panelMode === "leave" && !canLeave) ? "buttons" : panelMode;
 
   // Whether the selected room has any requests that haven't expired, for the "Check current requests" link.
   // Checked against the clock (not just the list) so the link disappears once the last one expires.
@@ -244,7 +247,7 @@ export default function Index() {
           </Pressable>}
         </View>
 
-        {panelMode === "cancel" ?
+        {mode === "cancel" ?
         <View style={styles.actions}>
           <View style={styles.confirmTextBox}>
             <Text style={styles.confirmText}>Cancel your request?</Text>
@@ -252,14 +255,14 @@ export default function Index() {
               You’re cancelling on {otherPerson(gender)}. Be considerate of others’ time.
             </Text>
           </View>
-          <Pressable style={styles.confirmYes} onPress={() => { setPanelMode("buttons"); cancelRequest(); }}>
+          <Pressable style={styles.confirmYes} disabled={busy} onPress={() => { setPanelMode("buttons"); cancelRequest(); }}>
             <Text style={styles.timeText}>Yes</Text>
           </Pressable>
           <Pressable style={styles.confirmNo} onPress={() => setPanelMode("buttons")}>
             <Text style={styles.confirmNoText}>No</Text>
           </Pressable>
         </View>
-        : panelMode === "leave" ?
+        : mode === "leave" ?
         <View style={styles.actions}>
           <View style={styles.confirmTextBox}>
             <Text style={styles.confirmText}>Leave this request?</Text>
@@ -267,18 +270,18 @@ export default function Index() {
               Remember, {otherPerson(gender)} is expecting you.
             </Text>
           </View>
-          <Pressable style={styles.confirmYes} onPress={() => { setPanelMode("buttons"); leaveRequest(); }}>
+          <Pressable style={styles.confirmYes} disabled={busy} onPress={() => { setPanelMode("buttons"); leaveRequest(); }}>
             <Text style={styles.timeText}>Yes</Text>
           </Pressable>
           <Pressable style={styles.confirmNo} onPress={() => setPanelMode("buttons")}>
             <Text style={styles.confirmNoText}>No</Text>
           </Pressable>
         </View>
-        : panelMode === "picker" ?
+        : mode === "picker" ?
         <View style={styles.actions}>
           <Text style={styles.whenText}>When?</Text>
           {START_OFFSETS.map((minutes) => (
-            <Pressable key={minutes} style={styles.timeButton} onPress={() => { setPanelMode("buttons"); postRequest(selectedRoom.id, minutes); }}>
+            <Pressable key={minutes} style={styles.timeButton} disabled={busy} onPress={() => { setPanelMode("buttons"); postRequest(selectedRoom.id, minutes); }}>
               <Text style={styles.timeText}>{minutes}</Text>
               <Text style={styles.timeUnit} numberOfLines={1} adjustsFontSizeToFit>min</Text>
             </Pressable>
@@ -303,7 +306,8 @@ export default function Index() {
           </Pressable>
           : activeRequestRow ?
           <Pressable
-            style={[styles.requestButton, styles.cancelButton]}
+            style={[styles.requestButton, styles.cancelButton, busy && styles.busyButton]}
+            disabled={busy}
             // Only warn when someone joined; with no joiners, cancelling affects nobody.
             onPress={() => ((counts[activeRequestRow.id] ?? 0) > 0 ? setPanelMode("cancel") : cancelRequest())}>
             <Text style={styles.cancelTitle} numberOfLines={1}>Cancel to start a new request</Text>
@@ -319,7 +323,7 @@ export default function Index() {
             </Text>
           </Pressable>
           : activeJoinedRow ?
-          <Pressable style={[styles.requestButton, styles.cancelButton]} onPress={() => setPanelMode("leave")}>
+          <Pressable style={[styles.requestButton, styles.cancelButton, busy && styles.busyButton]} disabled={busy} onPress={() => setPanelMode("leave")}>
             <Text style={styles.cancelTitle} numberOfLines={1}>Leave request</Text>
             <Text style={styles.cancelDetail} numberOfLines={1}>
               {myJoinedRoom?.building} · {formatTime(activeJoinedRow.start_time)}
@@ -335,8 +339,13 @@ export default function Index() {
             </Text>
           </Pressable>
           :
-          <Pressable style={styles.requestButton} onPress={() => setPanelMode("picker")}>
-            <Text style={styles.requestText}>Request</Text>
+          // Not offered until the first load is in (the user may already have a request that hasn't
+          // arrived yet), nor while an action is on its way (a post shows the spinner here).
+          <Pressable style={[styles.requestButton, (busy || !loaded) && styles.busyButton]}
+            disabled={busy || !loaded} onPress={() => setPanelMode("picker")}>
+            {busy || !loaded
+              ? <ActivityIndicator color={colors.paper} />
+              : <Text style={styles.requestText}>Request</Text>}
           </Pressable>}
         </View>}
       </View>}
@@ -451,6 +460,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.ink,
     alignItems: "center",
     justifyContent: "center",
+  },
+  busyButton: {
+    opacity: 0.6,           // dimmed while an action is on its way or data is still loading
   },
   requestText: {
     color: colors.paper,

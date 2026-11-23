@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@jest/globals";
-import { actionErrorMessage, isNetworkError, NOTHING_DELETED_ERROR } from "@/lib/errors";
+import { actionErrorMessage, ALREADY_STARTED_ERROR, isNetworkError, NOTHING_DELETED_ERROR } from "@/lib/errors";
 import { OFFLINE_ERROR } from "@/lib/network";
 
 const NO_CONNECTION = "No connection. Check your internet and try again.";
@@ -56,11 +56,23 @@ describe("actionErrorMessage", () => {
     expect(actionErrorMessage("cancel", { code: "42501", message: "" })).toBe("Couldn't cancel your request. Try again.");
   });
 
-  it("leave/cancel: a delete that removed zero rows says it may have already ended", () => {
-    expect(actionErrorMessage("leave", NOTHING_DELETED_ERROR)).toMatch(/may have already ended/);
-    expect(actionErrorMessage("cancel", NOTHING_DELETED_ERROR)).toMatch(/may have already ended/);
+  it("leave/cancel: a delete that removed zero rows says it may have already started or ended", () => {
+    // Since 2026-11-23 the database also refuses a late Leave/Cancel (0 rows), hence "started".
+    expect(actionErrorMessage("leave", NOTHING_DELETED_ERROR)).toMatch(/may have already started or ended/);
+    expect(actionErrorMessage("cancel", NOTHING_DELETED_ERROR)).toMatch(/may have already started or ended/);
   });
   it("NOTHING_DELETED is not mistaken for a network error", () => {
     expect(isNetworkError(NOTHING_DELETED_ERROR)).toBe(false);
+  });
+  it("leave/cancel: a request that already started points to Done", () => {
+    expect(actionErrorMessage("leave", ALREADY_STARTED_ERROR)).toBe("It's already started. Tap Done when you've prayed.");
+    expect(actionErrorMessage("cancel", ALREADY_STARTED_ERROR)).toBe("It's already started. Tap Done when you've prayed.");
+  });
+  it("post/join: the one-role trigger names what to leave or cancel", () => {
+    expect(actionErrorMessage("post", { code: "23514", message: "Already joined a request" })).toMatch(/Leave it to post/);
+    expect(actionErrorMessage("join", { code: "23514", message: "Already holding a request" })).toMatch(/Cancel it to join/);
+  });
+  it("ALREADY_STARTED is not mistaken for a network error", () => {
+    expect(isNetworkError(ALREADY_STARTED_ERROR)).toBe(false);
   });
 });
