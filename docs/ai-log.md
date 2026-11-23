@@ -8,3 +8,5 @@ Times Claude's code or review was wrong, and how it was caught.
   Caught while building the #8 expiry job, before release. Fixed by making Done hide the request on the phone only and letting the server delete and count it.
 - **2026-11-20:** Claude's TAP_WINS_MS guard (500ms) was tuned to Apple's default marker. After the switch to a custom marker view, the stray selection arrived at ~492ms and sometimes slipped past, opening the wrong room's panel.
   Caught by the phone test; timestamped logs in onPress/onSelect showed the gap. Fixed by widening the window to 1000ms.
+- **2026-11-21:** Claude's recenter button relied on `onRegionChange`'s `isGesture` to stop following the user, but `isGesture` is Google Maps only. On Apple Maps following never turned off: every drag snapped back to the user and the button did nothing.
+  Caught by the phone test; confirmed in the react-native-maps docs. Fixed by following only until the recenter move finishes.

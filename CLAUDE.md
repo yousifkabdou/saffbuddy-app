@@ -5,67 +5,61 @@ A React Native (Expo) app for finding people on campus to pray in congregation w
 ## How I want to work
 
 I'm a first-year CS student building this as a resume project. I'm learning
-JavaScript, TypeScript, and React Native as I go. I need to understand and be
-able to explain all of the app's logic: data, state, effects, async code, and
-security. UI styling is the one exception (see "Ownership" below).
+JavaScript, TypeScript, and React Native as I go.
+
+**Current priority (since 2026-11-22): ship first, learn after.** My top
+priority is getting the app released. Claude writes the code and makes the
+implementation decisions; I depend on it for that, so it has to be careful.
+After launch I'll go back, learn the theory behind everything the app uses,
+and make changes myself.
 
 **Override:** If my message contains "ARISE" in all caps, Claude sets aside
-any limit in this file that holds me back for that message only. This includes
-the ownership tiers and the "ask questions first" rule. Claude does what I asked and says in one line which rule it set
-aside. Lowercase "arise" doesn't count. The next message goes back to the
-normal rules.
+any limit in this file that holds me back for that message only. Claude does
+what I asked and says in one line which rule it set aside. Lowercase "arise"
+doesn't count. The next message goes back to the normal rules.
 
-- I want to move fast, so Claude can write and edit code when my request is
-  specific enough to show I understand it: what should happen, where it goes,
-  and roughly how it works (e.g. "tapping a marker sets selectedRoom, the panel
-  renders only when it's set, and the X sets it back to null").
-- If my request is vague ("add the panel", "make check-ins work"), don't write
-  code yet. Ask me a few questions about the approach first, and write it once
-  my answers show I understand it.
-- Fix small syntax errors and typos in my code directly, and tell me in one line
-  what was wrong.
+- Think things through before writing code: read the code you're changing and
+  what depends on it, consider edge cases (failed or slow network, empty
+  results, expired requests, time zones, sign-out mid-action), and look for
+  bugs nearby. Pick the right fix, not just the lowest-risk one.
+- Decide the implementation yourself. Ask me only about product behaviour
+  (what the app should do for the user) when it's genuinely unclear, and give
+  a recommendation with the question.
+- Explain each decision briefly: what you chose and why, in plain terms, so I
+  can learn from it later. Not a line-by-line restatement.
+- Leave short comments in the code where the reason for something isn't
+  obvious, since I'll be reading it later to learn.
+- If you find a bug outside the current change, report it and propose a fix
+  rather than fixing it silently.
 - Keep changes small: one feature or fix at a time.
-- After writing code, explain anything that's new to me: the concept and why,
-  not a line-by-line restatement.
 - Skip style and grammar nitpicks. Focus on things that affect how the code works.
 
 ## Time and value
 
 My time is limited, and this project exists to make me a strong SWE intern
-candidate (and later ML/AI). Before asking me to do something by hand, check
-whether it builds a skill that matters for that:
-
-- Worth my time: the security model, data modeling, state/effects/async,
-  testing, debugging, Git workflow, and anything an interviewer would
-  plausibly ask about.
-- Not worth my time: tool-specific setup and config, styling, build errors,
-  library quirks, boilerplate, and one-off plumbing. Just do these and tell me
-  in one line what you did.
-
-If you're unsure which category something is in, say so in one sentence and
-recommend one. Don't make me hand-write something just because I could.
+candidate (and later ML/AI). Until launch, don't ask me to do things by hand
+that you can do yourself. The things only I can do: phone testing, dashboard
+and account steps (Supabase, Apple, Resend), running commits and pushes, and
+product decisions. Tell me in one line what you did for anything else.
 
 ## Ownership
 
 There are three tiers. When a task spans more than one, split it and say which
 part falls in which tier.
 
-1. **Security: Claude implements, I understand.** Authentication, gender
-   separation, invite/vouching logic, RLS policies, column grants, and
-   `security definer` functions. I'm still learning this, so don't assume I
-   know the right approach. Propose the design first and explain it in plain
-   terms, then implement it. Every security change must come with tests that
-   prove the rule holds, including the negative case (e.g. a user of the other
-   gender gets zero rows; an anonymous user can't read identifying columns).
-   Before committing, I must be able to explain the rule, why it exists, and
-   what the tests prove. Quiz me on that, not on syntax.
-2. **I design it; Claude writes it.** Features and how they behave. I decide
-   what happens and roughly how; Claude implements it. I must be able to
-   explain and debug it, and rewrite a small piece without help.
+1. **Security: Claude designs and implements, with tests.** Authentication,
+   gender separation, invite/vouching logic, RLS policies, column grants, and
+   `security definer` functions. Explain the design in plain terms before
+   implementing it, so I can catch anything that conflicts with how the app
+   should behave. Every security change must come with tests that prove the
+   rule holds, including the negative case (e.g. a user of the other gender
+   gets zero rows; an anonymous user can't read identifying columns). Run the
+   tests before applying SQL to the live database. No quiz needed before
+   committing until after launch.
+2. **Features: I decide what it does; Claude designs and writes it.** I say
+   what should happen for the user; Claude chooses how and implements it.
 3. **Delegated.** UI layout and styling: positioning, spacing, colours, text
-   styles. Claude can write these freely. I only need to be able to read the
-   component structure (components, props, state) in a diff, not produce the
-   styling myself. Don't quiz me on styling details.
+   styles. Claude writes these freely.
 
 ## Database guardrail
 
@@ -81,8 +75,10 @@ part falls in which tier.
 
 ## Verification
 
-- Before saying a task is done, run the type check and any tests that exist,
-  and report the results. If something can't be run, say so plainly.
+- Before saying a task is done, run `npm run typecheck`, `npm run lint`, and
+  `npm test`, and report the results. CI runs the same three on every PR
+  (`.github/workflows/ci.yml`). If something can't be run, say so plainly, and
+  list what still needs testing on my phone.
 - Never weaken, skip, or delete a test to make it pass. If a test looks wrong,
   explain why and let me decide.
 - When a feature has testable logic (expiry, filtering, date/time handling),
@@ -91,8 +87,7 @@ part falls in which tier.
 ## Commits and the quiz
 
 - The quiz is optional: only quiz me when I ask for it. Don't block or delay a
-  commit or push because there was no quiz. Exception: security changes need
-  the tier-1 quiz before committing (see "Ownership").
+  commit or push because there was no quiz.
 - When I do ask, have me explain what the code does and why, in my own words,
   until my explanation would hold up if an interviewer asked about it. If it's
   vague or wrong, point out the gap and ask again; don't just give me the answer.
@@ -112,7 +107,9 @@ exist. These become interview stories, so keep them factual.
 
 ## Project decisions
 
-- Fixed prayer locations, no live GPS tracking
+- Fixed prayer locations, no GPS-based matching. The map may show the user's
+  own location; the app keeps it in memory only to move the map and never sends
+  or stores it (see docs/adr/0002)
 - Requests are opt-in and expire (there is no separate check-in concept)
 - No location or prayer history is stored; the only exception is anonymous
   per-room, per-day congregation counts (see docs/adr/0001)
