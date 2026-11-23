@@ -5,7 +5,9 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { GlassView } from "expo-glass-effect";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { isNetworkError } from "@/lib/errors";
+import { isOffline, OFFLINE_ERROR } from "@/lib/network";
 import { Text } from "@/components/AppText";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -20,6 +22,7 @@ export default function ProfileScreen() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [email, setEmail] = useState("");
   const [failed, setFailed] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // Load once on open. RLS only returns the user's own row; .eq makes that explicit.
   useEffect(() => {
@@ -39,6 +42,40 @@ export default function ProfileScreen() {
     load();
   }, []);
 
+  const confirmDelete = () => {
+    Alert.alert(
+      "Delete your account?",
+      "This permanently deletes your account and any request you’re in. It can’t be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Delete", style: "destructive", onPress: deleteAccount },
+      ],
+    );
+  };
+
+  const deleteAccount = async () => {
+    setDeleting(true);
+    // delete_my_account() (supabase/delete_account.sql) deletes the caller's auth user; the
+    // database's cascades remove their profile, request and joins. It takes no arguments:
+    // the server reads who's asking from the login token.
+    const { error } = (await isOffline()) ? { error: OFFLINE_ERROR } : await supabase.rpc("delete_my_account");
+    if (error) {
+      console.log(error.message);
+      setDeleting(false);
+      Alert.alert(
+        "Couldn’t delete your account",
+        isNetworkError(error) ? "No connection. Check your internet and try again." : "Something went wrong. Try again.",
+      );
+      return;
+    }
+    // The account and its server sessions are already gone, so only clear the login saved on
+    // this phone ("local"); asking the server to sign out a deleted user would just fail.
+    await supabase.auth.signOut({ scope: "local" });
+    // This screen sits on top of the tabs: close it and the tabs, then show login.
+    router.dismissAll();
+    router.replace("/login");
+  };
+
   return (
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={{ paddingTop: top + 24, paddingBottom: insets.bottom + 24 }}>
@@ -55,10 +92,12 @@ export default function ProfileScreen() {
         <Text style={styles.reportText}>Report a problem</Text>
         <Text style={styles.note}>Coming soon</Text>
 
-        {/* Placeholder: not wired up yet. Design approved 2026-11-21 (security definer
-            delete_my_account(), confirm dialog, then sign out); implemented in its own change. */}
-        <Text style={styles.deleteText}>Delete account</Text>
-        <Text style={styles.note}>Coming soon</Text>
+        <Pressable style={styles.deleteButton} onPress={confirmDelete} disabled={deleting}>
+          {deleting
+            ? <ActivityIndicator color={colors.scarlet} />
+            : <Text style={styles.deleteText}>Delete account</Text>}
+        </Pressable>
+        <Text style={styles.note}>Permanently deletes your account and any request you’re in</Text>
       </ScrollView>
 
       <TitlePill title="Profile" />
@@ -134,13 +173,19 @@ const styles = StyleSheet.create({
     marginTop: 32,
     opacity: 0.5,           // faded: it doesn't do anything yet
   },
+  deleteButton: {
+    alignSelf: "center",
+    marginTop: 32,
+    paddingVertical: 8,     // bigger tap target than the text alone
+    paddingHorizontal: 16,
+    minHeight: 36,
+    justifyContent: "center",
+  },
   deleteText: {
     textAlign: "center",
     color: colors.scarlet,
     fontSize: 16,
     fontWeight: "600",
-    marginTop: 32,
-    opacity: 0.5,           // faded: it doesn't do anything yet
   },
   message: {
     textAlign: "center",
