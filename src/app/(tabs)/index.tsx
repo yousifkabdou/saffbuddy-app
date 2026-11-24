@@ -37,6 +37,13 @@ const TAP_WINS_MS = 1000;
 // highlight jumps to the neighbour and back. If a tap arrives within the wait, the tap wins.
 const SELECT_WAIT_MS = 200;
 
+// The open room's marker draws above every other marker, even one Apple Maps has selected.
+// On iOS, react-native-maps adds 999 to a selected marker's zIndex (AIR_CALLOUT_OPEN_ZINDEX_BASELINE
+// in AIRMapMarker.m). About 500ms after a tap, Apple Maps can select a neighbouring marker the user
+// didn't tap; we deselect it, but until then it sat at 0 + 999 and flashed on top of the open room
+// (which had zIndex 1). Anything above 999 keeps the open room on top for that moment.
+const OPEN_ROOM_Z_INDEX = 2000;
+
 // TEMPORARY diagnostics for the highlight jump: remove once it's fixed. Dev builds only. Logs every
 // marker and map event to Metro with the gap since the previous one, so the real order of events on
 // a phone can be read off instead of guessed. Only room names are logged, never the user's location.
@@ -220,7 +227,7 @@ export default function Index() {
       // The open room's marker swaps colours and draws on top of its neighbours.
       // A pin's point is its bottom centre; a dot's is its middle.
       anchor={zoomedOut ? { x: 0.5, y: 0.5 } : { x: 0.5, y: 1 }}
-      zIndex={selectedRoom?.id === room.id ? 1 : 0}>
+      zIndex={selectedRoom?.id === room.id ? OPEN_ROOM_Z_INDEX : 0}>
         {zoomedOut
           ? <MarkerDot selected={selectedRoom?.id === room.id} />
           : <MarkerPin selected={selectedRoom?.id === room.id} />}
