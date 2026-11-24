@@ -109,10 +109,14 @@ select pg_temp.check('G8 NEGATIVE: anon cannot run any app function', 'false',
 select pg_temp.check('G9 NEGATIVE: authenticated cannot run the expiry job or the auth hook', 'false',
   (has_function_privilege('authenticated', 'public.expire_requests()', 'EXECUTE')
    or has_function_privilege('authenticated', 'public.verify_osu_email(jsonb)', 'EXECUTE'))::text);
+-- Pinned to '' (ours) or to pg_catalog only (Supabase's own rls_auto_enable does this). Both are
+-- safe: nobody but the database owner can create objects in pg_catalog, so a caller can't plant a
+-- lookalike table or function there. Unpinned, or pinned to a schema users can write to, fails.
 select pg_temp.check('G10 every security definer function in public pins search_path', '0',
   (select count(*) from pg_proc
    where pronamespace = 'public'::regnamespace and prosecdef
-     and not coalesce(proconfig @> array['search_path=""'], false))::text);
+     and not coalesce(proconfig @> array['search_path=""']
+                      or proconfig @> array['search_path=pg_catalog'], false))::text);
 
 
 /* ---------- Profiles ---------- */
