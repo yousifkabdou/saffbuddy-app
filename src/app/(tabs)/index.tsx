@@ -10,7 +10,7 @@ import { formatTime, freeAgainAt, isExpired, isInProgress } from "@/lib/requestT
 import { otherPerson } from "@/lib/wording";
 import { useRouter } from "expo-router";
 import { useBottomTabBarHeight } from "expo-router/js-tabs";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { Text } from "@/components/AppText";
 import MapView, { MapMarker, Marker } from "react-native-maps";
@@ -40,9 +40,9 @@ const SELECT_WAIT_MS = 200;
 // The open room's marker draws above every other marker, even one Apple Maps has selected.
 // On iOS, react-native-maps adds 999 to a selected marker's zIndex (AIR_CALLOUT_OPEN_ZINDEX_BASELINE
 // in AIRMapMarker.m). About 500ms after a tap, Apple Maps can select a neighbouring marker the user
-// didn't tap; we deselect it, but until then it sat at 0 + 999 and flashed on top of the open room
-// (which had zIndex 1). Anything above 999 keeps the open room on top for that moment.
-const OPEN_ROOM_Z_INDEX = 2000;
+// didn't tap; we deselect it, but until then it sat at its zIndex + 999 and flashed on top of the
+// open room. This must stay above 999 + the highest resting zIndex (the number of rooms).
+const OPEN_ROOM_Z_INDEX = 10_000;
 
 // TEMPORARY diagnostics for the highlight jump: remove once it's fixed. Dev builds only. Logs every
 // marker and map event to Metro with the gap since the previous one, so the real order of events on
@@ -105,6 +105,15 @@ export default function Index() {
 
   // Whether the selected room has any requests that haven't expired, for the "Check current requests" link.
   // Checked against the clock (not just the list) so the link disappears once the last one expires.
+  // Each marker's zIndex when it isn't open: rooms further south draw in front (a pin lower on the
+  // screen looks nearer). Every marker gets its own number so Apple Maps never breaks a tie. With
+  // ties (all 0), it used its own order, which a stray selection had changed, so closing the panel
+  // flashed the neighbour on top of the room you just closed until Apple re-sorted.
+  const restingZIndex = useMemo(() => {
+    const northToSouth = [...rooms].sort((a, b) => b.latitude - a.latitude || a.id.localeCompare(b.id));
+    return Object.fromEntries(northToSouth.map((r, i) => [r.id, i + 1]));
+  }, [rooms]);
+
   const roomHasRequests = selectedRoom !== null &&
     requests.some((r) => r.room_id === selectedRoom.id && !isExpired(r.start_time, now));
 
@@ -227,7 +236,7 @@ export default function Index() {
       // The open room's marker swaps colours and draws on top of its neighbours.
       // A pin's point is its bottom centre; a dot's is its middle.
       anchor={zoomedOut ? { x: 0.5, y: 0.5 } : { x: 0.5, y: 1 }}
-      zIndex={selectedRoom?.id === room.id ? OPEN_ROOM_Z_INDEX : 0}>
+      zIndex={selectedRoom?.id === room.id ? OPEN_ROOM_Z_INDEX : restingZIndex[room.id]}>
         {zoomedOut
           ? <MarkerDot selected={selectedRoom?.id === room.id} />
           : <MarkerPin selected={selectedRoom?.id === room.id} />}
