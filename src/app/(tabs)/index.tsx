@@ -198,7 +198,9 @@ export default function Index() {
           return;
         }
         // The tap that just happened already opened this room (and a re-open would reset the picker).
-        if (recentPress && selectedRoom?.id === room.id) { mapLog("  ignored: already open"); return; }
+        // Compared with the tap, not selectedRoom: this select arrives ~2ms after the tap, before
+        // React has re-rendered, so selectedRoom here is still the value from before the tap.
+        if (recentPress && press.roomId === room.id) { mapLog("  ignored: this room was just tapped"); return; }
         mapLog(`  waiting ${SELECT_WAIT_MS}ms before opening`);
         // No tap behind it: wait briefly in case a tap on another marker is about to arrive.
         if (pendingSelect.current) clearTimeout(pendingSelect.current.timer);
