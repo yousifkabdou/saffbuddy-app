@@ -277,6 +277,13 @@ select pg_temp.check('E12 a pending change to another OSU address is allowed', '
   pg_temp.admin(format('update auth.users set email_change = ''m1.new@osu.edu'' where id = %L', pg_temp.u('m1'))));
 select pg_temp.check('E13 changing to another OSU address is allowed', 'ok:1',
   pg_temp.admin(format('update auth.users set email = ''m1.new@osu.edu'', email_change = '''' where id = %L', pg_temp.u('m1'))));
+select pg_temp.check('E' || n || ' is_osu_email(' || email || ')', expected::text, public.is_osu_email(email)::text)
+from (values (14, 'x@evil.com@osu.edu', false), (15, 'x y@osu.edu', false), (16, '@osu.edu', false),
+             (17, 'x@osu.edu' || chr(10), false), (18, 'a.1+tag@osu.edu', true)) v(n, email, expected);
+select pg_temp.check('E19 NEGATIVE: hook refuses an address with two @', 'true',
+  (public.verify_osu_email('{"user":{"email":"x@evil.com@osu.edu"}}') ? 'error')::text);
+select pg_temp.check('E20 NEGATIVE: email cannot change to an address with two @', 'error',
+  pg_temp.admin(format('update auth.users set email = ''x@evil.com@osu.edu'' where id = %L', pg_temp.u('m1'))));
 
 
 select test, expected, actual,
