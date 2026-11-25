@@ -12,9 +12,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const MENU_WIDTH = Math.min(300, Dimensions.get("window").width * 0.8);
 
-// The privacy policy, as published from docs/privacy-policy.md. Update this if it moves
-// (for example to a GitHub Pages site); the App Store Connect listing needs the same URL.
-const PRIVACY_POLICY_URL = "https://github.com/yousifkabdou/saffbuddy-app/blob/main/docs/privacy-policy.md";
+// The published privacy policy. It's served by Cloudflare from the saffbuddy-site repo
+// (public/privacy.html); docs/privacy-policy.md here is the draft it was made from.
+// The App Store Connect listing needs the same URL.
+const PRIVACY_POLICY_URL = "https://saffbuddy.app/privacy";
 
 // Menu button (top left, on every tab) + the side menu it opens: Profile at the top, Sign Out at the bottom.
 // Rendered once in the tabs layout, above the screens.

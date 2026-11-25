@@ -1,6 +1,9 @@
 # SaffBuddy Privacy Policy
 
-**Effective date:** [DATE]
+<!-- Published at https://saffbuddy.app/privacy from the saffbuddy-site repo (public/privacy.html).
+     Change both together, and update the effective date. -->
+
+**Effective date:** November 24, 2026
 
 SaffBuddy helps Ohio State students find people on campus to pray in congregation with. This policy explains what the app collects, why, who can see it, and how to delete it. We collect as little as we can: the app never keeps a record of who prayed where.
 
@@ -30,7 +33,7 @@ On your phone, the app keeps your sign-in so you stay logged in. It's removed wh
 
 - **Other users never see your name or email.** A request shows only the room, the start time, and how many people have joined. Requests from the other gender aren't shown to you, and yours aren't shown to them.
 - **Our service providers** handle data only to run the app:
-  - [Supabase](https://supabase.com/privacy) hosts the database and handles sign-in. Data is stored in [REGION].
+  - [Supabase](https://supabase.com/privacy) hosts the database and handles sign-in. Data is stored in the United States (US East).
   - [Resend](https://resend.com/legal/privacy-policy) sends the sign-in code to your email address.
   - Apple Maps (and Google Maps on Android) show the campus map. If you tap Directions, the room's location opens in Apple Maps or Google Maps, which use your location to plan the route under their own privacy policies.
 - We don't sell or share your information with anyone else, and we don't use it for advertising.
@@ -54,4 +57,4 @@ If this policy changes, we'll update the date at the top. If a change affects ho
 
 ## Contact
 
-Questions or requests: [CONTACT EMAIL]
+Questions or requests: support@saffbuddy.app
