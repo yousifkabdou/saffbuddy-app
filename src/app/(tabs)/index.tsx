@@ -10,7 +10,7 @@ import { formatTime, freeAgainAt, isExpired, isInProgress } from "@/lib/requestT
 import { otherPerson } from "@/lib/wording";
 import { useRouter } from "expo-router";
 import { useBottomTabBarHeight } from "expo-router/js-tabs";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { Text } from "@/components/AppText";
 import MapView, { MapMarker, Marker } from "react-native-maps";
@@ -31,6 +31,13 @@ const DOT_ZOOM_DELTA = 0.03;
 
 // After a marker tap, how long a selection of a *different* marker is treated as Apple Maps noise.
 const TAP_WINS_MS = 1000;
+
+// The open room's marker draws above every other marker, even one Apple Maps has selected.
+// On iOS, react-native-maps adds 999 to a selected marker's zIndex (AIR_CALLOUT_OPEN_ZINDEX_BASELINE
+// in AIRMapMarker.m). About 500ms after a tap, Apple Maps can select a neighbouring marker the user
+// didn't tap; we deselect it, but until then it sat at its zIndex + 999 and flashed on top of the
+// open room. This must stay above 999 + the highest resting zIndex (the number of rooms).
+const OPEN_ROOM_Z_INDEX = 10_000;
 
 export default function Index() {
   const [selectedRoom, setSelectedRoom] = useState<null | Room>(null);
@@ -71,6 +78,18 @@ export default function Index() {
   useEffect(() => {
     Location.requestForegroundPermissionsAsync().then(({ granted }) => setLocationAllowed(granted));
   }, []);
+
+  // Each marker's zIndex when it isn't open: rooms further south draw in front (a pin lower on the
+  // screen looks nearer). Every marker gets its own number so Apple Maps never breaks a tie. With
+  // ties (all 0), it used its own order, which a stray selection had changed, so closing the panel
+  // flashed the neighbour on top of the room you just closed until Apple re-sorted.
+  // Known and accepted (2026-11-24): when closing a room that overlaps a neighbour, its pin can still
+  // blink for a frame before settling. Likely MapKit and react-native-maps both setting the layer's
+  // zPosition during the deselect; not worth a native patch.
+  const restingZIndex = useMemo(() => {
+    const northToSouth = [...rooms].sort((a, b) => b.latitude - a.latitude || a.id.localeCompare(b.id));
+    return Object.fromEntries(northToSouth.map((r, i) => [r.id, i + 1]));
+  }, [rooms]);
 
   // Whether the selected room has any requests that haven't expired, for the "Check current requests" link.
   // Checked against the clock (not just the list) so the link disappears once the last one expires.
@@ -151,14 +170,19 @@ export default function Index() {
       // After a map tap closes the panel, Apple Maps selects the next marker
       // without firing onPress, so open the panel on select too.
       onSelect={ () => {
+        const press = lastPress.current;
+        const recentPress = press !== null && Date.now() - press.at < TAP_WINS_MS;
         // Zoomed out, Apple Maps sometimes selects a nearby marker right after the tapped one,
         // with no tap behind it. A tap wins for a moment: ignore a different room selected just after.
-        const press = lastPress.current;
-        if (press && press.roomId !== room.id && Date.now() - press.at < TAP_WINS_MS) {
+        if (recentPress && press.roomId !== room.id) {
           // Deselect it too, or Apple Maps keeps it selected and ignores the next real tap on it.
           markerRefs.current[room.id]?.hideCallout();
           return;
         }
+        // The tap that just happened already opened this room (and a re-open would reset the picker).
+        // Compared with the tap, not selectedRoom: this select arrives ~2ms after the tap, before
+        // React has re-rendered, so selectedRoom here is still the value from before the tap.
+        if (recentPress && press.roomId === room.id) return;
         openPanel(room);
       }}
       // A custom view as the child replaces Apple's default balloon, which has a grow-on-select
@@ -166,7 +190,7 @@ export default function Index() {
       // The open room's marker swaps colours and draws on top of its neighbours.
       // A pin's point is its bottom centre; a dot's is its middle.
       anchor={zoomedOut ? { x: 0.5, y: 0.5 } : { x: 0.5, y: 1 }}
-      zIndex={selectedRoom?.id === room.id ? 1 : 0}>
+      zIndex={selectedRoom?.id === room.id ? OPEN_ROOM_Z_INDEX : restingZIndex[room.id]}>
         {zoomedOut
           ? <MarkerDot selected={selectedRoom?.id === room.id} />
           : <MarkerPin selected={selectedRoom?.id === room.id} />}
