@@ -19,8 +19,10 @@ export const NOTHING_DELETED = "NOTHING_DELETED";
 export const NOTHING_DELETED_ERROR: AppError = { code: NOTHING_DELETED, message: "delete matched zero rows" };
 
 // No code + a fetch/network message = the request never reached the database.
+// "abort" covers our own timeout (fetchWithTimeout in src/lib/supabase.ts), which comes back
+// as { code: "", message: "AbortError: Aborted" }.
 export function isNetworkError(error: AppError) {
-  return !error.code && /network|fetch|timed? ?out|offline/i.test(error.message);
+  return !error.code && /network|fetch|timed? ?out|offline|abort/i.test(error.message);
 }
 
 const NO_CONNECTION = "No connection. Check your internet and try again.";

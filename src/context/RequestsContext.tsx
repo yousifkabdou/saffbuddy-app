@@ -1,5 +1,6 @@
 import { Room } from "@/data/room";
 import { useRequests } from "@/hooks/useRequests";
+import { useRetryWhenBack } from "@/hooks/useRetryWhenBack";
 import { actionErrorMessage } from "@/lib/errors";
 import { isOffline } from "@/lib/network";
 import { formatTime, freeAgainAt, isExpired } from "@/lib/requestTime";
@@ -88,17 +89,25 @@ function useSharedRequestsState() {
   // Retry tapped: load everything again. Each load clears its own flag when it succeeds.
   // retrying drives the banner's spinner, so the user sees the attempt even when it fails again.
   const [retrying, setRetrying] = useState(false);
-  const retryLoads = async () => {
+  // auto: called by useRetryWhenBack rather than a tap. Then "still offline" stays quiet:
+  // a toast every time the app comes back to the front would be noise.
+  const retryLoads = async (auto = false) => {
     if (retrying) return; // ignore extra taps while one retry is running
     if (await isOffline()) {
-      showToast("Still offline. Check your connection and try again.");
+      if (!auto) showToast("Still offline. Check your connection and try again.");
       return;
     }
     setRetrying(true);
-    // Promise.all waits for all three loads, which run at the same time.
-    await Promise.all([loadBasics(), loadRequests(), loadJoins()]);
-    setRetrying(false);
+    try {
+      // Promise.all waits for all three loads, which run at the same time.
+      await Promise.all([loadBasics(), loadRequests(), loadJoins()]);
+    } finally {
+      setRetrying(false); // always stop the spinner, even if a load throws
+    }
   };
+  // While anything has failed, retry on its own when the phone reconnects or the app reopens.
+  // Without this, rooms/gender that failed at launch only came back if the user tapped the banner.
+  useRetryWhenBack(loadFailed, () => retryLoads(true));
 
   // The user's own request and its room, for the red Cancel button. undefined if they have none
   // (or if myRequestId is stale and that row is no longer in the list).
@@ -138,7 +147,7 @@ function useSharedRequestsState() {
 
   return {
     ...requestsState,
-    rooms, gender, now, doneId, markDone, toast, hideToast, loadFailed, retryLoads, retrying, openRoomId, setOpenRoomId, focusRoomId, setFocusRoomId,
+    rooms, gender, now, doneId, markDone, toast, showToast, hideToast, loadFailed, retryLoads, retrying, openRoomId, setOpenRoomId, focusRoomId, setFocusRoomId,
     myRequestRoom, myJoinedRoom, activeRequestRow, activeJoinedRow, finishingRow,
     handleJoin,
   };
