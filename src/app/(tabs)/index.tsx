@@ -32,29 +32,12 @@ const DOT_ZOOM_DELTA = 0.03;
 // After a marker tap, how long a selection of a *different* marker is treated as Apple Maps noise.
 const TAP_WINS_MS = 1000;
 
-// A selection with no tap behind it waits this long before opening the panel. Apple Maps can also
-// select a nearby marker *just before* the tapped one's onPress arrives; without the wait, the
-// highlight jumps to the neighbour and back. If a tap arrives within the wait, the tap wins.
-const SELECT_WAIT_MS = 200;
-
 // The open room's marker draws above every other marker, even one Apple Maps has selected.
 // On iOS, react-native-maps adds 999 to a selected marker's zIndex (AIR_CALLOUT_OPEN_ZINDEX_BASELINE
 // in AIRMapMarker.m). About 500ms after a tap, Apple Maps can select a neighbouring marker the user
 // didn't tap; we deselect it, but until then it sat at its zIndex + 999 and flashed on top of the
 // open room. This must stay above 999 + the highest resting zIndex (the number of rooms).
 const OPEN_ROOM_Z_INDEX = 10_000;
-
-// TEMPORARY diagnostics for the highlight jump: remove once it's fixed. Dev builds only. Logs every
-// marker and map event to Metro with the gap since the previous one, so the real order of events on
-// a phone can be read off instead of guessed. Only room names are logged, never the user's location.
-let lastMapLogAt = 0;
-function mapLog(msg: string) {
-  if (!__DEV__) return;
-  const t = Date.now();
-  console.log(`[map +${lastMapLogAt ? t - lastMapLogAt : 0}ms] ${msg}`);
-  lastMapLogAt = t;
-}
-const roomLabel = (r: Room) => `${r.building} ${r.room_num}`;
 
 export default function Index() {
   const [selectedRoom, setSelectedRoom] = useState<null | Room>(null);
@@ -63,8 +46,6 @@ export default function Index() {
   const mapRef = useRef<MapView | null>(null); // the map itself, so code can move it
   // The last marker the user actually tapped, and when. A ref: it only guides onSelect, nothing renders from it.
   const lastPress = useRef<{ roomId: string; at: number } | null>(null);
-  // A selection waiting out SELECT_WAIT_MS, so a tap can cancel it. Also a ref: it's a timer, not UI.
-  const pendingSelect = useRef<{ roomId: string; at: number; timer: ReturnType<typeof setTimeout> } | null>(null);
   // Request data, the clock and Done live in RequestsProvider (tabs layout) so every tab shares one copy.
   const {
     rooms, gender, now, requests, counts, markDone,
@@ -98,28 +79,25 @@ export default function Index() {
     Location.requestForegroundPermissionsAsync().then(({ granted }) => setLocationAllowed(granted));
   }, []);
 
-  // Leaving the screen mid-wait: drop the timer so it can't set state on an unmounted screen.
-  useEffect(() => () => {
-    if (pendingSelect.current) clearTimeout(pendingSelect.current.timer);
-  }, []);
-
-  // Whether the selected room has any requests that haven't expired, for the "Check current requests" link.
-  // Checked against the clock (not just the list) so the link disappears once the last one expires.
   // Each marker's zIndex when it isn't open: rooms further south draw in front (a pin lower on the
   // screen looks nearer). Every marker gets its own number so Apple Maps never breaks a tie. With
   // ties (all 0), it used its own order, which a stray selection had changed, so closing the panel
   // flashed the neighbour on top of the room you just closed until Apple re-sorted.
+  // Known and accepted (2026-11-24): when closing a room that overlaps a neighbour, its pin can still
+  // blink for a frame before settling. Likely MapKit and react-native-maps both setting the layer's
+  // zPosition during the deselect; not worth a native patch.
   const restingZIndex = useMemo(() => {
     const northToSouth = [...rooms].sort((a, b) => b.latitude - a.latitude || a.id.localeCompare(b.id));
     return Object.fromEntries(northToSouth.map((r, i) => [r.id, i + 1]));
   }, [rooms]);
 
+  // Whether the selected room has any requests that haven't expired, for the "Check current requests" link.
+  // Checked against the clock (not just the list) so the link disappears once the last one expires.
   const roomHasRequests = selectedRoom !== null &&
     requests.some((r) => r.room_id === selectedRoom.id && !isExpired(r.start_time, now));
 
   // Open a room's panel with the picker and confirm closed, so they don't carry over from the last room.
   const openPanel = (room: Room) => {
-    mapLog(`OPEN ${roomLabel(room)}`);
     setPanelMode("buttons");
     setSelectedRoom(room);
   };
@@ -127,7 +105,6 @@ export default function Index() {
   // Close the panel and deselect the marker right away. Otherwise Apple Maps keeps
   // it selected for ~1s and ignores taps on it, so it can't be reopened.
   const closePanel = () => {
-    mapLog(`CLOSE (was ${selectedRoom ? roomLabel(selectedRoom) : "nothing"})`);
     if (selectedRoom) {
       markerRefs.current[selectedRoom.id]?.hideCallout();
     }
@@ -177,7 +154,6 @@ export default function Index() {
       onRegionChangeComplete={(region) => setZoomedOut(region.latitudeDelta > DOT_ZOOM_DELTA)}
       onPress={(event) => {
         // Tapping a marker can also reach the map; only close for taps on empty map.
-        mapLog(`map press, action=${event.nativeEvent.action ?? "none"}`);
         if (event.nativeEvent.action !== "marker-press") {
           closePanel();
         }
@@ -188,14 +164,6 @@ export default function Index() {
       coordinate =
       {{latitude: room.latitude, longitude: room.longitude }}
       onPress={ () => {
-        mapLog(`press ${roomLabel(room)} (zoomedOut=${zoomedOut}, open=${selectedRoom ? roomLabel(selectedRoom) : "none"})`);
-        const pending = pendingSelect.current;
-        if (pending) {
-          // A selection beat this tap. Cancel it so the highlight never visits that room.
-          clearTimeout(pending.timer);
-          pendingSelect.current = null;
-          mapLog(`  cancelled waiting select ${pending.roomId}, it came ${Date.now() - pending.at}ms before this tap`);
-        }
         lastPress.current = { roomId: room.id, at: Date.now() };
         openPanel(room);
       }}
@@ -204,33 +172,19 @@ export default function Index() {
       onSelect={ () => {
         const press = lastPress.current;
         const recentPress = press !== null && Date.now() - press.at < TAP_WINS_MS;
-        mapLog(`select ${roomLabel(room)} (last tap ${press ? `${Date.now() - press.at}ms ago` : "never"})`);
         // Zoomed out, Apple Maps sometimes selects a nearby marker right after the tapped one,
         // with no tap behind it. A tap wins for a moment: ignore a different room selected just after.
         if (recentPress && press.roomId !== room.id) {
           // Deselect it too, or Apple Maps keeps it selected and ignores the next real tap on it.
-          mapLog(`  ignored: a different room was just tapped; deselecting ${roomLabel(room)}`);
           markerRefs.current[room.id]?.hideCallout();
           return;
         }
         // The tap that just happened already opened this room (and a re-open would reset the picker).
         // Compared with the tap, not selectedRoom: this select arrives ~2ms after the tap, before
         // React has re-rendered, so selectedRoom here is still the value from before the tap.
-        if (recentPress && press.roomId === room.id) { mapLog("  ignored: this room was just tapped"); return; }
-        mapLog(`  waiting ${SELECT_WAIT_MS}ms before opening`);
-        // No tap behind it: wait briefly in case a tap on another marker is about to arrive.
-        if (pendingSelect.current) clearTimeout(pendingSelect.current.timer);
-        pendingSelect.current = {
-          roomId: room.id,
-          at: Date.now(),
-          timer: setTimeout(() => {
-            mapLog(`  wait over for ${roomLabel(room)}`);
-            pendingSelect.current = null;
-            openPanel(room);
-          }, SELECT_WAIT_MS),
-        };
+        if (recentPress && press.roomId === room.id) return;
+        openPanel(room);
       }}
-      onDeselect={() => mapLog(`deselect ${roomLabel(room)}`)}
       // A custom view as the child replaces Apple's default balloon, which has a grow-on-select
       // animation (it visibly flashed when the TAP_WINS_MS guard deselected a stray marker).
       // The open room's marker swaps colours and draws on top of its neighbours.
