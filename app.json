@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "saffbuddy-app",
+    "name": "SaffBuddy",
     "slug": "saffbuddy-app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -8,7 +8,10 @@
     "scheme": "saffbuddyapp",
     "userInterfaceStyle": "light",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {

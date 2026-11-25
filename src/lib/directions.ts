@@ -3,7 +3,7 @@ import { Alert, Linking, Platform } from "react-native";
 
 // Opens walking directions to a room in the user's map app.
 // iOS asks Apple Maps or Google Maps; Android goes straight to Google Maps.
-// The app never reads the user's location: the map app works out the route.
+// The app never sends the user's location anywhere: the map app works out the route (docs/adr/0002).
 export function openDirections(room: Room) {
   const destination = `${room.latitude},${room.longitude}`;
   const appleUrl = `https://maps.apple.com/?daddr=${destination}&dirflg=w`;

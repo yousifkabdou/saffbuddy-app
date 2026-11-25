@@ -10,7 +10,7 @@ SaffBuddy is a mobile app for Ohio State students. It shows the campus prayer ro
   <img src="docs/screenshots/room-panel.png" width="260" alt="Room panel for 18th Ave Library with directions and Request buttons" />
 </p>
 
-> **Status:** in active development. Login, the campus map and room details work on iOS. Prayer requests are designed and being built next, with a TestFlight beta planned.
+> **Status:** in active development on iOS. Sign-in, the campus map, prayer requests (post, join, leave, live updates and expiry), prayer times and account deletion all work. A TestFlight beta is next.
 
 ## Features
 
@@ -19,18 +19,19 @@ SaffBuddy is a mobile app for Ohio State students. It shows the campus prayer ro
 - Accounts limited to `@osu.edu` emails, enforced by the database rather than by the app
 - Campus map with a marker for each prayer room
 - Room panel with floor, room number, description, and walking directions handed off to Apple Maps or Google Maps
-
-**In progress**
-- Profiles (first name and gender)
+- Profiles (first name and gender), and in-app account deletion
 - Prayer requests: post, join, leave and cancel, with live updates and automatic expiry
-- Push notifications (planned for after the beta)
+- Prayer times for campus, with a countdown to the next prayer
+
+**Planned**
+- Push notifications (after the beta)
 
 ## Privacy by design
 
-- **No GPS tracking.** Prayer rooms are fixed places. Directions open your own maps app, so SaffBuddy never reads your location.
+- **No GPS matching or tracking.** Prayer rooms are fixed places. If you allow location, the map shows where you are; the position stays in memory on your phone and is never sent or saved ([ADR 0002](docs/adr/0002-on-device-location-only.md)).
 - **No history.** Requests are deleted when they expire or are cancelled.
 - **Anonymous until you join.** Before joining, people see only the start time and how many have joined.
-- **Rules live in the database.** OSU-only sign-up is already enforced there, and gender-separated visibility will be too, through Postgres row-level security. Because of this, a modified app can't get around them.
+- **Rules live in the database.** OSU-only accounts and gender-separated visibility are enforced by Postgres row-level security, grants and triggers, with tests for each rule (`npm test`). Because of this, a modified app can't get around them.
 - **Anonymous metrics only.** Usage is counted per room per day, with no user IDs or times ([ADR 0001](docs/adr/0001-aggregate-congregation-counts.md)).
 
 ## Tech stack

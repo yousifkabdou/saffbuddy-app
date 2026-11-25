@@ -7,6 +7,11 @@ on:
     branches: [main]
   pull_request:
 
+# The job only reads code. Without this, the token can have write access, and npm ci runs
+# every dependency's install scripts with it available.
+permissions:
+  contents: read
+
 jobs:
   check:
     runs-on: ubuntu-latest
