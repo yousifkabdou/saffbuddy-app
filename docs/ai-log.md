@@ -22,3 +22,5 @@ Times Claude's code or review was wrong, and how it was caught.
   Caught by the user's phone test. Fixed by using `\r\n` and a test that fails on any bare `%0A`.
 - **2026-11-24:** Claude's first unchecked-Supabase-error lint rule used `:has(> ObjectPattern > Property[key.name='error'])`, which this esquery version silently never matches, so it flagged every database call, even ones that did check `error`.
   Caught by the rule's own tests (the "allows destructuring error" case failed). Fixed by making the braces the subject, so only a one-step `:has(> Property)` is needed.
+- **2026-11-25:** Claude's `is_osu_email` used `like '%@osu.edu'`, which only checks the ending, so `x@evil.com@osu.edu` passed the sign-up check.
+  Caught by the overnight edge-case SQL test O31. Fixed with an anchored regex `^[^@\s]+@osu\.edu$`, the same rule the app already used.

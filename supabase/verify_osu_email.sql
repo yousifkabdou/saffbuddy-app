@@ -4,15 +4,16 @@
      non-OSU address (supabase.auth.updateUser({ email }) never calls the sign-up hook).
    The app has its own copy (isOsuEmail in src/lib/authErrors.ts) only to show a nicer message. */
 
--- true only for addresses ending in @osu.edu (any case). null/missing -> false.
--- LIKE treats "." as a plain dot, so notosu.edu and osu.edu.evil.com don't match.
+-- true only for <one or more non-@, non-space characters>@osu.edu (any case). null/missing -> false.
+-- Anchored at both ends, so x@evil.com@osu.edu (two @), "x y@osu.edu", notosu.edu and
+-- osu.edu.evil.com don't match. Same rule as isOsuEmail in src/lib/authErrors.ts.
 create or replace function public.is_osu_email(email text)
 returns boolean
 language sql
 immutable
 set search_path = ''
 as $$
-  select coalesce(lower(email) like '%@osu.edu', false)
+  select coalesce(email ~* '^[^@\s]+@osu\.edu$', false)
 $$;
 
 revoke execute on function public.is_osu_email(text) from public, anon, authenticated;
