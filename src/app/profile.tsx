@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { isNetworkError } from "@/lib/errors";
 import { isOffline, OFFLINE_ERROR } from "@/lib/network";
+import { openSupportEmail, SUPPORT_EMAIL } from "@/lib/support";
 import { Text } from "@/components/AppText";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -95,11 +96,12 @@ export default function ProfileScreen() {
           </View>}
         <Text style={styles.note}>Name and gender can’t be changed after setup</Text>
 
-        {/* Placeholder: not designed or wired up yet. */}
-        <Text style={styles.reportText}>Report a problem</Text>
-        <Text style={styles.note}>Coming soon</Text>
+        <Pressable style={styles.textButton} onPress={openSupportEmail}>
+          <Text style={styles.reportText}>Report a problem</Text>
+        </Pressable>
+        <Text style={styles.note}>Opens your mail app to email {SUPPORT_EMAIL}</Text>
 
-        <Pressable style={styles.deleteButton} onPress={confirmDelete} disabled={deleting}>
+        <Pressable style={styles.textButton} onPress={confirmDelete} disabled={deleting}>
           {deleting
             ? <ActivityIndicator color={colors.scarlet} />
             : <Text style={styles.deleteText}>Delete account</Text>}
@@ -174,13 +176,12 @@ const styles = StyleSheet.create({
   },
   reportText: {
     textAlign: "center",
-    color: colors.ink,
+    color: colors.scarlet,
     fontSize: 16,
     fontWeight: "600",
-    marginTop: 32,
-    opacity: 0.5,           // faded: it doesn't do anything yet
   },
-  deleteButton: {
+  // Shared by Report a problem and Delete account.
+  textButton: {
     alignSelf: "center",
     marginTop: 32,
     paddingVertical: 8,     // bigger tap target than the text alone

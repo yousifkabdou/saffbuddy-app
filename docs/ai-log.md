@@ -18,3 +18,5 @@ Times Claude's code or review was wrong, and how it was caught.
   Caught by Claude's own review before commit. Fixed with `onPress={() => retryLoads()}`.
 - **2026-11-24:** The timing logs showed the 2026-11-22 theory was wrong: the tap came first, and the "jump" was a stray Apple selection of a neighbour ~500ms later, which react-native-maps lifts to zIndex +999, above the open room's zIndex 1. They also showed Claude's "already open" check read `selectedRoom`, still stale 2ms after the tap, so the panel reopened and reset.
   Caught by dev-only event logs on the phone plus reading react-native-maps' AIRMapMarker.m. Fixed by giving the open room a zIndex above that boost (10,000), a fixed resting zIndex per marker, and comparing against the tapped room id.
+- **2026-11-24:** Claude's Report a problem email template used bare `\n` line breaks in the mailto body, so the mail app showed the whole template on one line. The mailto standard (RFC 6068) requires CRLF (`%0D%0A`).
+  Caught by the user's phone test. Fixed by using `\r\n` and a test that fails on any bare `%0A`.
