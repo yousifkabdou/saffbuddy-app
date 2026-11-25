@@ -20,3 +20,5 @@ Times Claude's code or review was wrong, and how it was caught.
   Caught by dev-only event logs on the phone plus reading react-native-maps' AIRMapMarker.m. Fixed by giving the open room a zIndex above that boost (10,000), a fixed resting zIndex per marker, and comparing against the tapped room id.
 - **2026-11-24:** Claude's Report a problem email template used bare `\n` line breaks in the mailto body, so the mail app showed the whole template on one line. The mailto standard (RFC 6068) requires CRLF (`%0D%0A`).
   Caught by the user's phone test. Fixed by using `\r\n` and a test that fails on any bare `%0A`.
+- **2026-11-24:** Claude's first unchecked-Supabase-error lint rule used `:has(> ObjectPattern > Property[key.name='error'])`, which this esquery version silently never matches, so it flagged every database call, even ones that did check `error`.
+  Caught by the rule's own tests (the "allows destructuring error" case failed). Fixed by making the braces the subject, so only a one-step `:has(> Property)` is needed.
