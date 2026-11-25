@@ -8,12 +8,14 @@
     "scheme": "saffbuddyapp",
     "userInterfaceStyle": "light",
     "ios": {
+      "bundleIdentifier": "app.saffbuddy",
       "icon": "./assets/expo.icon",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
+      "package": "app.saffbuddy",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
