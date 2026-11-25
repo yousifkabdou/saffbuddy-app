@@ -20,7 +20,7 @@ const SCHEMA_ORDER = [
   "expiry.sql", "live_updates.sql", "delete_account.sql", "verify_osu_email.sql",
 ];
 const MIGRATIONS = ["hardening_2026_11_23.sql"];
-const CHECKS = ["security_checks.sql", "expiry_checks.sql", "delete_account_checks.sql", "live_updates_checks.sql"];
+const CHECKS = ["security_checks.sql", "expiry_checks.sql", "delete_account_checks.sql", "live_updates_checks.sql", "overnight_checks.sql"];
 
 async function run(db, label, file) {
   try {
