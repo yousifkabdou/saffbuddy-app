@@ -1,8 +1,13 @@
 // Time rules for requests. "In progress" and "expired" aren't stored anywhere;
 // they're worked out from the start time and the current clock.
 
-// Joining stays open until this many minutes after the start time.
-// Must match the interval in the joiners insert policy (supabase/joins.sql).
+// Start time choices, in minutes from now. No "Now": a request needs a few minutes for anyone
+// to see it and walk over. Must match the list in post_request() (supabase/joins.sql), and fit
+// inside the requests insert policy's 4-46 minute window.
+export const START_OFFSETS = [5, 10, 15, 30, 45];
+
+// Joining, leaving and cancelling stay open until this many minutes after the start time.
+// Must match the interval in the joiners insert policy and both delete policies (supabase/).
 export const JOIN_GRACE_MINUTES = 2;
 
 // A request disappears this many minutes after its start time.

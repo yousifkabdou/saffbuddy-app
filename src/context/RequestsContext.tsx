@@ -3,10 +3,11 @@ import { useRequests } from "@/hooks/useRequests";
 import { useRetryWhenBack } from "@/hooks/useRetryWhenBack";
 import { actionErrorMessage } from "@/lib/errors";
 import { isOffline } from "@/lib/network";
-import { formatTime, freeAgainAt, isExpired } from "@/lib/requestTime";
+import { membership } from "@/lib/membership";
+import { formatTime, freeAgainAt } from "@/lib/requestTime";
 import { supabase } from "@/lib/supabase";
 import { createContext, ReactNode, useContext, useEffect, useRef, useState } from "react";
-import { Alert } from "react-native";
+import { Alert, AppState } from "react-native";
 
 // How long a toast stays on screen.
 const TOAST_MS = 4000;
@@ -59,9 +60,17 @@ function useSharedRequestsState() {
 
   // Re-render every 30 seconds so rows switch to "In progress" and expired ones disappear
   // without a reload. The cleanup stops the timer when the provider unmounts (sign out).
+  // Timers pause while the app is in the background, so also update the clock the moment it comes
+  // back: otherwise a request that started meanwhile would still show Join for up to 30 seconds.
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 30 * 1000);
-    return () => clearInterval(timer);
+    const appState = AppState.addEventListener("change", (state) => {
+      if (state === "active") setNow(Date.now());
+    });
+    return () => {
+      clearInterval(timer);
+      appState.remove();
+    };
   }, []);
 
   // Load the rooms and the viewer's gender. RLS decides which rooms come back
@@ -109,23 +118,12 @@ function useSharedRequestsState() {
   // Without this, rooms/gender that failed at launch only came back if the user tapped the banner.
   useRetryWhenBack(loadFailed, () => retryLoads(true));
 
-  // The user's own request and its room, for the red Cancel button. undefined if they have none
-  // (or if myRequestId is stale and that row is no longer in the list).
-  const myRequestRow = requests.find((r) => r.id === myRequestId);
+  // What the user is in right now: active, finishing, or nothing (src/lib/membership.ts, tested).
+  const { myRequestRow, myJoinedRow, activeRequestRow, activeJoinedRow, finishingRow } =
+    membership({ requests, myRequestId, myJoinedId, doneId, now });
+  // Their rooms, for the button labels ("Thompson Library · 1:40 PM").
   const myRequestRoom = rooms.find((room) => room.id === myRequestRow?.room_id);
-
-  // Same idea for the request the user joined, for the "Joined" label and the blocked-Join alert.
-  const myJoinedRow = requests.find((r) => r.id === myJoinedId);
   const myJoinedRoom = rooms.find((room) => room.id === myJoinedRow?.room_id);
-
-  // The rows the user is still "in": not tapped Done and not expired. undefined otherwise.
-  const isFinished = (row: { id: string; start_time: string }) => row.id === doneId || isExpired(row.start_time, now);
-  const activeRequestRow = myRequestRow && !isFinished(myRequestRow) ? myRequestRow : undefined;
-  const activeJoinedRow = myJoinedRow && !isFinished(myJoinedRow) ? myJoinedRow : undefined;
-
-  // Finished but not yet deleted by the server. Until then the database still sees the user
-  // in it, so posting or joining would be refused.
-  const finishingRow = (!activeRequestRow && myRequestRow) || (!activeJoinedRow && myJoinedRow) || undefined;
 
   // Join tapped on a row. A user can be in only one request, so if they already are,
   // tell them what to do instead of sending an insert the database would refuse anyway.

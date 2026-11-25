@@ -9,13 +9,13 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useBottomTabBarHeight } from "expo-router/js-tabs";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, Pressable, ScrollView, type ScrollViewInstance, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, ScrollView, type ScrollViewInstance, StyleSheet, View } from "react-native";
 import { Text } from "@/components/AppText";
 import TitlePill, { useTitleSpace } from "@/components/TitlePill";
 
 // Every room the user can see, grouped with its requests, busiest room first (see sortRooms).
 export default function Requests() {
-  const { rooms, requests, now, setOpenRoomId, focusRoomId, setFocusRoomId } = useSharedRequests();
+  const { rooms, requests, now, loaded, setOpenRoomId, focusRoomId, setFocusRoomId } = useSharedRequests();
   const router = useRouter();
   const tabBarHeight = useBottomTabBarHeight(); // the tab bar floats over the screen
   const listTop = useTitleSpace(); // space the floating title covers
@@ -63,7 +63,10 @@ export default function Requests() {
   return (
     <View style={styles.screen}>
     <ScrollView ref={scrollRef} contentContainerStyle={{ paddingTop: listTop, paddingBottom: tabBarHeight + 16 }}>
-      {!anyRequests && rooms.length > 0 &&
+      {/* Until the first load is in, "no requests" might not be true yet. */}
+      {!loaded &&
+      <ActivityIndicator style={styles.loading} color={colors.grey} />}
+      {loaded && !anyRequests && rooms.length > 0 &&
       <Text style={styles.emptyAll}>No requests right now. Post one from a room on the map.</Text>}
 
       {groups.map((group) => (
@@ -127,7 +130,7 @@ function RoomSection({ group, open, onToggle, onOpenOnMap, onLayout }: {
 function RequestRow({ request }: { request: PrayerRequest }) {
   const {
     now, gender, counts, myRequestId, myJoinedId, doneId, markDone,
-    handleJoin, cancelRequest, leaveRequest,
+    handleJoin, cancelRequest, leaveRequest, busy,
   } = useSharedRequests();
 
   const isMine = request.id === myRequestId;
@@ -168,13 +171,13 @@ function RequestRow({ request }: { request: PrayerRequest }) {
     );
   } else if (isMine) {
     action = (
-      <Pressable style={[styles.actionButton, styles.redButton]} onPress={confirmCancel}>
+      <Pressable style={[styles.actionButton, styles.redButton, busy && styles.busyButton]} disabled={busy} onPress={confirmCancel}>
         <Text style={styles.actionText}>Cancel</Text>
       </Pressable>
     );
   } else if (isJoined) {
     action = (
-      <Pressable style={[styles.actionButton, styles.redButton]} onPress={confirmLeave}>
+      <Pressable style={[styles.actionButton, styles.redButton, busy && styles.busyButton]} disabled={busy} onPress={confirmLeave}>
         <Text style={styles.actionText}>Leave</Text>
       </Pressable>
     );
@@ -184,7 +187,7 @@ function RequestRow({ request }: { request: PrayerRequest }) {
   } else {
     // handleJoin shows an alert instead if the user is already in a request.
     action = (
-      <Pressable style={styles.actionButton} onPress={() => handleJoin(request.id)}>
+      <Pressable style={[styles.actionButton, busy && styles.busyButton]} disabled={busy} onPress={() => handleJoin(request.id)}>
         <Text style={styles.actionText}>Join</Text>
       </Pressable>
     );
@@ -207,6 +210,12 @@ function RequestRow({ request }: { request: PrayerRequest }) {
 }
 
 const styles = StyleSheet.create({
+  loading: {
+    marginTop: 24,
+  },
+  busyButton: {
+    opacity: 0.6, // dimmed while an action is on its way
+  },
   screen: {
     flex: 1,
     backgroundColor: colors.background, // grey, so the glass room cards stand out
