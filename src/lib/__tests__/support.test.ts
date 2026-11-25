@@ -6,16 +6,17 @@ describe("supportMailto", () => {
   it("addresses support and encodes the subject and body", () => {
     const url = supportMailto("ios", "18.1");
     expect(url.startsWith(`mailto:${SUPPORT_EMAIL}?subject=`)).toBe(true);
-    // Spaces must be %20, not "+", and newlines %0A.
+    // Spaces must be %20, not "+", and every line break CRLF (%0D%0A), never a bare %0A.
     expect(url).not.toContain("+");
     expect(url).not.toContain(" ");
-    expect(url).toContain("%0A");
+    expect(url).toContain("%0D%0A");
+    expect(url.replaceAll("%0D%0A", "")).not.toContain("%0A");
   });
 
   it("round-trips to the expected text, with only the OS and version added", () => {
     const query = new URLSearchParams(supportMailto("android", 34).split("?")[1]);
     expect(query.get("subject")).toBe("SaffBuddy: problem report");
-    expect(query.get("body")).toBe("What happened: \nWhat did you expect: \n\n(android 34)");
+    expect(query.get("body")).toBe("What happened: \r\nWhat did you expect: \r\n\r\n(android 34)");
   });
 });
 

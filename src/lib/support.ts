@@ -8,8 +8,10 @@ export const SUPPORT_EMAIL = "support@saffbuddy.app";
 // so whatever they send is what they chose to type.
 export function supportMailto(os: string = Platform.OS, version: string | number = Platform.Version): string {
   const subject = "SaffBuddy: problem report";
-  const body = `What happened: \nWhat did you expect: \n\n(${os} ${version})`;
-  // encodeURIComponent turns spaces into %20 and newlines into %0A, which mail apps expect.
+  // Line breaks are \r\n (CRLF): the mailto standard (RFC 6068) requires it, and some mail
+  // apps drop a bare \n, squashing the template onto one line.
+  const body = `What happened: \r\nWhat did you expect: \r\n\r\n(${os} ${version})`;
+  // encodeURIComponent turns spaces into %20 and \r\n into %0D%0A.
   // (URLSearchParams would use "+" for spaces, and some mail apps show the "+" literally.)
   return `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
