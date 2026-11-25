@@ -19,6 +19,24 @@ export function isOsuEmail(email: string) {
   return /^[^\s@]+@osu\.edu$/i.test(email);
 }
 
+// The one account Apple's App Review signs in with. It can't read an emailed code, so this
+// address alone signs in with a password (set in the Supabase dashboard). Every other account
+// has no password, so a password attempt on it just fails. The database allows this exact
+// address as an exception to the OSU rule (is_osu_email in supabase/verify_osu_email.sql).
+export const REVIEW_EMAIL = "review@saffbuddy.app";
+
+// Exact match (any case, already trimmed): a near miss like "review@saffbuddy.app.x" gets the normal code flow.
+export function isReviewEmail(email: string) {
+  return email.toLowerCase() === REVIEW_EMAIL;
+}
+
+export function passwordErrorMessage(error: AuthErrorLike): string {
+  if (isNetworkError(error)) return NO_CONNECTION;
+  if (error.code === "invalid_credentials") return "Wrong password.";
+  if (error.code === "over_request_rate_limit") return "Too many tries. Wait a few minutes and try again.";
+  return "Couldn't sign in. Try again.";
+}
+
 // A 6-digit code, nothing else (spaces from copy-paste are trimmed before this).
 export function isSixDigitCode(code: string) {
   return /^\d{6}$/.test(code);

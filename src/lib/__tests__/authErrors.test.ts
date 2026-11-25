@@ -1,7 +1,31 @@
 import { describe, expect, it } from "@jest/globals";
 import {
-  isOsuEmail, isSixDigitCode, OSU_ONLY, secondsToWait, sendCodeErrorMessage, verifyCodeErrorMessage,
+  isOsuEmail, isReviewEmail, isSixDigitCode, OSU_ONLY, passwordErrorMessage, secondsToWait,
+  sendCodeErrorMessage, verifyCodeErrorMessage,
 } from "@/lib/authErrors";
+
+describe("isReviewEmail (only this address gets the password sign-in)", () => {
+  it("matches the review address in any case", () => {
+    expect(isReviewEmail("review@saffbuddy.app")).toBe(true);
+    expect(isReviewEmail("Review@SaffBuddy.app")).toBe(true);
+  });
+  it.each([
+    "buckeye.1@osu.edu", "review@osu.edu", "review2@saffbuddy.app", "xreview@saffbuddy.app",
+    "review@saffbuddy.app.evil.com", "support@saffbuddy.app", "review@saffbuddy.ap", "",
+  ])("NEGATIVE: %p gets the normal code flow", (email) => {
+    expect(isReviewEmail(email)).toBe(false);
+  });
+});
+
+describe("passwordErrorMessage", () => {
+  it("names a wrong password, never Supabase's raw text", () => {
+    expect(passwordErrorMessage({ code: "invalid_credentials", message: "Invalid login credentials" })).toBe("Wrong password.");
+    expect(passwordErrorMessage({ code: "unexpected_failure", message: "boom" })).toBe("Couldn't sign in. Try again.");
+  });
+  it("shows No connection for a network failure", () => {
+    expect(passwordErrorMessage({ message: "Network request failed" })).toBe("No connection. Check your internet and try again.");
+  });
+});
 
 describe("isOsuEmail", () => {
   it("accepts an OSU address in any case", () => {

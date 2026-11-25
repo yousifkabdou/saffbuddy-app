@@ -6,8 +6,8 @@ import MarkerPin from "@/components/MarkerPin";
 import { ActivityIndicator, KeyboardAvoidingView, Pressable, StyleSheet, View } from "react-native";
 import { Text, TextInput } from "@/components/AppText";
 import {
-  isOsuEmail, isSixDigitCode, OSU_ONLY, RESEND_COOLDOWN_SECONDS, secondsToWait,
-  sendCodeErrorMessage, verifyCodeErrorMessage,
+  isOsuEmail, isReviewEmail, isSixDigitCode, OSU_ONLY, passwordErrorMessage, RESEND_COOLDOWN_SECONDS,
+  secondsToWait, sendCodeErrorMessage, verifyCodeErrorMessage,
 } from "@/lib/authErrors";
 import { isOffline, OFFLINE_ERROR } from "@/lib/network";
 
@@ -24,6 +24,13 @@ export default function Login(){
     // two codes (the second would replace the first one in the user's inbox).
     const [sending, setSending] = useState(false);
     const [verifying, setVerifying] = useState(false);
+    // App Review only: the review address signs in with a password instead of a code.
+    // passwordFor locks the email like sentTo does; no code is ever sent to that address.
+    const [passwordFor, setPasswordFor] = useState<string | null>(null);
+    const [password, setPassword] = useState("");
+    const [passwordError, setPasswordError] = useState("");
+    const [signingIn, setSigningIn] = useState(false);
+    const lockedEmail = sentTo ?? passwordFor;
 
     // Resend cooldown. Supabase allows one code per address per 60s, so instead of letting the
     // user tap and get an error, the button counts down. cooldownUntil is a timestamp (ms);
@@ -52,6 +59,11 @@ export default function Login(){
     const handleSendCode = async () => {
     if (sending || secondsLeft > 0) return;
     const address = sentTo ?? email.trim();
+    if (!sentTo && isReviewEmail(address)) {
+      setEmailError("");
+      setPasswordFor(address); // show the password step instead of sending a code
+      return;
+    }
     if (!sentTo && !isOsuEmail(address)) {
       setEmailError(OSU_ONLY);
       return;
@@ -80,6 +92,29 @@ const handleChangeEmail = () => {
   setVerifyError("");
   setEmailError("");
   setCooldownUntil(null);
+  setPasswordFor(null);
+  setPassword("");
+  setPasswordError("");
+}
+
+const handlePasswordSignIn = async () => {
+  if (!passwordFor || signingIn) return;
+  if (!password) {
+    setPasswordError("Enter the password.");
+    return;
+  }
+  setSigningIn(true);
+  setPasswordError("");
+  const {error} = (await isOffline())
+    ? { error: OFFLINE_ERROR }
+    : await supabase.auth.signInWithPassword({email: passwordFor, password});
+  if (error){
+    console.log(error.message);
+    setSigningIn(false);
+    setPasswordError(passwordErrorMessage(error));
+    return
+  }
+  router.replace("/"); // leaving the screen, so `signingIn` stays true (no double sign-in)
 }
 
 const handleVerify = async() => {
@@ -114,10 +149,10 @@ const handleVerify = async() => {
 
         <View style={styles.card}>
           <Text style={styles.label}>Email</Text>
-          {sentTo
+          {lockedEmail
             ? <View style={[styles.input, styles.lockedRow]}>
-                <Text style={styles.lockedEmail} numberOfLines={1}>{sentTo}</Text>
-                <Pressable onPress={handleChangeEmail} hitSlop={8} disabled={sending}>
+                <Text style={styles.lockedEmail} numberOfLines={1}>{lockedEmail}</Text>
+                <Pressable onPress={handleChangeEmail} hitSlop={8} disabled={sending || signingIn}>
                   <Text style={styles.changeText}>Change</Text>
                 </Pressable>
               </View>
@@ -126,12 +161,27 @@ const handleVerify = async() => {
               keyboardType="email-address"
               autoCapitalize="none" />}
           {emailError && <Text style={styles.error}>{emailError}</Text>}
+          {!passwordFor &&
           <Pressable style={[styles.button, (sending || secondsLeft > 0) && styles.buttonDisabled]}
             onPress={handleSendCode} disabled={sending || secondsLeft > 0}>
             {sending
               ? <ActivityIndicator color={colors.paper} />
               : <Text style={styles.buttonText}>{secondsLeft > 0 ? `${sendLabel} in ${secondsLeft}s` : sendLabel}</Text>}
+          </Pressable>}
+
+          {passwordFor && <>
+          <Text style={[styles.label, styles.labelSpaced]}>Password</Text>
+          <TextInput style={styles.input} value={password} onChangeText={setPassword}
+            secureTextEntry autoCapitalize="none" autoCorrect={false}
+            textContentType="password" autoComplete="password"
+            returnKeyType="go" onSubmitEditing={handlePasswordSignIn} />
+          {passwordError && <Text style={styles.error}>{passwordError}</Text>}
+          <Pressable style={[styles.button, signingIn && styles.buttonDisabled]} onPress={handlePasswordSignIn} disabled={signingIn}>
+            {signingIn
+              ? <ActivityIndicator color={colors.paper} />
+              : <Text style={styles.buttonText}>Sign in</Text>}
           </Pressable>
+          </>}
 
           {sentTo && <>
           <Text style={[styles.label, styles.labelSpaced]}>6-digit code</Text>
@@ -148,7 +198,8 @@ const handleVerify = async() => {
         </View>
 
         <Text style={styles.footer}>
-          {sentTo ? `We sent a code to ${sentTo}` : "Use your OSU email and we'll send you a sign-in code"}
+          {passwordFor ? "App Review account"
+            : sentTo ? `We sent a code to ${sentTo}` : "Use your OSU email and we'll send you a sign-in code"}
         </Text>
     </KeyboardAvoidingView>);
 }

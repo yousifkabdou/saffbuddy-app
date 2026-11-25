@@ -15,8 +15,9 @@
    5. post_request(): the server sets start_time (the policy still checks everything).
    6. A user can't become requester and joiner at once by doing both at the same instant.
    7. expire_requests() locks the rows it counts, so a mid-run Leave/Cancel can't skew the tally.
-   (2026-11-25: is_osu_email below was tightened to match verify_osu_email.sql. To apply just that
-   on the live project, run verify_osu_email.sql again; it's safe to re-run.) */
+   (2026-11-25: is_osu_email below was tightened to match verify_osu_email.sql, and now also
+   allows the one App Review address review@saffbuddy.app. To apply just that on the live
+   project, run verify_osu_email.sql again; it's safe to re-run.) */
 
 begin;
 
@@ -43,7 +44,7 @@ language sql
 immutable
 set search_path = ''
 as $$
-  select coalesce(email ~* '^[^@\s]+@osu\.edu$', false)
+  select coalesce(email ~* '^[^@\s]+@osu\.edu$' or lower(email) = 'review@saffbuddy.app', false)
 $$;
 
 revoke execute on function public.is_osu_email(text) from public, anon, authenticated;
