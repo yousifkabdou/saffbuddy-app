@@ -1,24 +1,13 @@
 /* Checks for supabase/delete_account.sql. Run the whole file in the SQL Editor.
-   It creates the function inside the transaction and ends in rollback, so it works BEFORE the
-   function is applied, and nothing (function, fake users, deletions) is saved.
-   The function body below must match supabase/delete_account.sql.
+   It tests the function as deployed (it no longer re-creates its own copy, which could hide a
+   bad change) and ends in rollback, so the fake users and deletions aren't saved.
+   "Success. No rows returned" = every check passed; a failure stops with "FAIL: <checks>".
 
    Fake users (all Men, room 057):
      d1 = requester of R1, which d2 joined     -> d1 deletes their account
      d3 = requester of R3, which d4 joined     -> d4 deletes their account
    Expected results: every row says pass. */
 begin;
-
-create or replace function public.delete_my_account()
-returns void
-language sql
-security definer
-set search_path = ''
-as $$
-  delete from auth.users where id = auth.uid();
-$$;
-revoke execute on function public.delete_my_account() from public, anon;
-grant execute on function public.delete_my_account() to authenticated;
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-0000000000d1', 'd1@osu.edu'),
@@ -86,11 +75,24 @@ insert into results select '8 d4 join on R3 deleted (cascade)', '0',
   (select count(*) from public.joiners where member = '00000000-0000-0000-0000-0000000000d4')::text;
 insert into results select '9 NEGATIVE: d3 request R3 survives a joiner leaving', '1',
   (select count(*) from public.requests where id = '40000000-0000-0000-0000-0000000000a3')::text;
+insert into results select '11 function is security definer with search_path pinned', 'true',
+  (select prosecdef and proconfig @> array['search_path=""'] from pg_proc
+   where oid = 'public.delete_my_account()'::regprocedure)::text;
+insert into results select '12 NEGATIVE: anon has no execute on it', 'false',
+  has_function_privilege('anon', 'public.delete_my_account()', 'EXECUTE')::text;
 insert into results select '10 tally unchanged', (select n || '/' || c || '/' || b from base),
   (select count(*) || '/' || coalesce(sum(congregations), 0) || '/' || coalesce(sum(buddies), 0)
    from public.congregation_tally);
 
 select test, expected, actual, case when expected = actual then 'pass' else 'FAIL' end as result
 from results;
+
+-- Stop with an error naming any failed check, so a failure can't be missed (and npm test fails).
+do $$
+declare failed text;
+begin
+  select string_agg(test, '; ') into failed from results where expected::text is distinct from actual::text;
+  if failed is not null then raise exception 'FAIL: %', failed; end if;
+end $$;
 
 rollback;

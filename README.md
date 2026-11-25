@@ -60,7 +60,8 @@ You'll need Node.js, the Expo Go app on your phone, and a Supabase project.
    EXPO_PUBLIC_SUPABASE_URL=...
    EXPO_PUBLIC_SUPABASE_KEY=...
    ```
-3. In the Supabase SQL editor, run [supabase/verify_osu_email.sql](supabase/verify_osu_email.sql). Then enable it as a "Before User Created" auth hook.
+3. In the Supabase SQL editor, run the files in [supabase/](supabase/) in this order (each uses tables or functions from the ones before it): `profile.sql`, `rooms.sql`, `requests.sql`, `joins.sql`, `tally.sql`, `expiry.sql`, `live_updates.sql`, `delete_account.sql`, `verify_osu_email.sql`. Then enable `verify_osu_email` as a "Before User Created" auth hook. The `hardening_*.sql` files are one-time migrations for a database set up before them; a fresh project doesn't need them.
+   `npm test` runs the checks in [supabase/tests/](supabase/tests/) on a local Postgres. Run them in the SQL editor too, to check the live project.
 4. Start the dev server and scan the QR code with Expo Go:
    ```bash
    npx expo start

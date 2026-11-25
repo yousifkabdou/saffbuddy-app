@@ -11,14 +11,24 @@
    than EXPIRY_MINUTES.
 
    Not security definer: pg_cron runs it as postgres, which already bypasses RLS.
-   now() is fixed for the whole transaction, so the insert and the delete
-   pick exactly the same requests. */
+   Keeping the count and the delete in step: now() is fixed for the transaction, but each
+   statement sees the data as it is when that statement starts. So the first step locks the
+   expiring requests and their joiners. A Leave, Cancel or account deletion that arrives
+   mid-run waits until the run finishes, and the insert and the delete see the same rows.
+   (Since 2026-11-23 the delete policies also refuse Leave/Cancel after start + 2 min.) */
 create or replace function public.expire_requests()
 returns void
 language plpgsql
 set search_path = ''
 as $$
 begin
+  perform 1 from public.requests
+  where start_time <= now() - interval '10 minutes'
+  for update;
+  perform 1 from public.joiners
+  where request_id in (select id from public.requests where start_time <= now() - interval '10 minutes')
+  for update;
+
   insert into public.congregation_tally (room_id, day_of, congregations, buddies)
   select
     r.room_id,
