@@ -1,4 +1,5 @@
-/* OSU-only accounts. Two places need the same rule, so it lives in one function:
+/* OSU-only accounts (plus one App Review account, below). Two places need the same rule, so it
+   lives in one function:
    - verify_osu_email: the "Before User Created" Auth hook (Dashboard -> Authentication -> Hooks)
    - keep_osu_email: a trigger that stops an existing account changing its email to a
      non-OSU address (supabase.auth.updateUser({ email }) never calls the sign-up hook).
@@ -6,14 +7,18 @@
 
 -- true only for <one or more non-@, non-space characters>@osu.edu (any case). null/missing -> false.
 -- Anchored at both ends, so x@evil.com@osu.edu (two @), "x y@osu.edu", notosu.edu and
--- osu.edu.evil.com don't match. Same rule as isOsuEmail in src/lib/authErrors.ts.
+-- osu.edu.evil.com don't match. Same rule as isOsuEmail in src/lib/authErrors.ts, plus the
+-- exception below (the app checks that one separately, with isReviewEmail).
+-- One exception: review@saffbuddy.app, the account Apple's App Review signs in with (password,
+-- set in the dashboard; see REVIEW_EMAIL in authErrors.ts). Exact match only, and only whoever
+-- reads that inbox (the developer) could ever get a code for it.
 create or replace function public.is_osu_email(email text)
 returns boolean
 language sql
 immutable
 set search_path = ''
 as $$
-  select coalesce(email ~* '^[^@\s]+@osu\.edu$', false)
+  select coalesce(email ~* '^[^@\s]+@osu\.edu$' or lower(email) = 'review@saffbuddy.app', false)
 $$;
 
 revoke execute on function public.is_osu_email(text) from public, anon, authenticated;

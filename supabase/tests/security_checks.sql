@@ -284,6 +284,20 @@ select pg_temp.check('E19 NEGATIVE: hook refuses an address with two @', 'true',
   (public.verify_osu_email('{"user":{"email":"x@evil.com@osu.edu"}}') ? 'error')::text);
 select pg_temp.check('E20 NEGATIVE: email cannot change to an address with two @', 'error',
   pg_temp.admin(format('update auth.users set email = ''x@evil.com@osu.edu'' where id = %L', pg_temp.u('m1'))));
+-- The App Review exception: exactly one address, nothing near it.
+select pg_temp.check('E' || n || ' is_osu_email(' || email || ')', expected::text, public.is_osu_email(email)::text)
+from (values (21, 'review@saffbuddy.app', true), (22, 'Review@SaffBuddy.app', true),
+             (23, 'review2@saffbuddy.app', false), (24, 'xreview@saffbuddy.app', false),
+             (25, 'support@saffbuddy.app', false), (26, 'review@saffbuddy.app.evil.com', false),
+             (27, 'review@saffbuddy.app ', false), (28, 'x@review@saffbuddy.app', false)) v(n, email, expected);
+select pg_temp.check('E29 hook accepts the review address', '{}',
+  public.verify_osu_email('{"user":{"email":"review@saffbuddy.app"}}')::text);
+select pg_temp.check('E30 NEGATIVE: hook refuses another saffbuddy.app address', 'true',
+  (public.verify_osu_email('{"user":{"email":"support@saffbuddy.app"}}') ? 'error')::text);
+select pg_temp.check('E31 NEGATIVE: email cannot change to another saffbuddy.app address', 'error',
+  pg_temp.admin(format('update auth.users set email = ''x@saffbuddy.app'' where id = %L', pg_temp.u('m1'))));
+select pg_temp.check('E32 NEGATIVE: a pending email change to another saffbuddy.app address is refused', 'error',
+  pg_temp.admin(format('update auth.users set email_change = ''x@saffbuddy.app'' where id = %L', pg_temp.u('m1'))));
 
 
 select test, expected, actual,
