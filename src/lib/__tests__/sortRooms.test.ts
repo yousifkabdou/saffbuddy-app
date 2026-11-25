@@ -8,8 +8,8 @@ const NOW = new Date("2026-11-19T18:00:00Z").getTime();
 const MINUTE = 60 * 1000;
 
 // A request starting `minutesFromNow` after NOW (negative = already started).
-// With JOIN_GRACE_MINUTES = 2 and EXPIRY_MINUTES = 15:
-//   > -2 → pending,  -2 to -15 → in progress,  <= -15 → expired
+// With JOIN_GRACE_MINUTES = 2 and EXPIRY_MINUTES = 8:
+//   > -2 → pending,  -2 to -8 → in progress,  <= -8 → expired
 let nextId = 0;
 function request(roomId: string, minutesFromNow: number): PrayerRequest {
   return {
@@ -70,6 +70,13 @@ describe("sortRooms", () => {
     const groups = sortRooms([A, B], requests, NOW);
     expect(groups.map((g) => g.room.id)).toEqual(["b", "a"]);
     expect(groups[1].requests).toEqual([]);
+  });
+
+  it("keeps a request at 7 minutes past its start and drops it at 8 (EXPIRY_MINUTES)", () => {
+    const kept = request("a", -7);
+    const dropped = request("a", -8);
+    const [group] = sortRooms([A], [kept, dropped], NOW);
+    expect(group.requests).toEqual([kept]);
   });
 
   it("sorts each room's requests by start time", () => {

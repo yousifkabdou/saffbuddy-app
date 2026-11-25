@@ -11,7 +11,7 @@ import { otherPerson } from "@/lib/wording";
 import { useRouter } from "expo-router";
 import { useBottomTabBarHeight } from "expo-router/js-tabs";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import { ActivityIndicator, AppState, Pressable, StyleSheet, View } from "react-native";
 import { Text } from "@/components/AppText";
 import MapView, { MapMarker, Marker } from "react-native-maps";
 import * as Location from "expo-location";
@@ -46,7 +46,7 @@ export default function Index() {
     rooms, gender, now, requests, counts, markDone,
     myRequestRoom, myJoinedRoom, activeRequestRow, activeJoinedRow, finishingRow,
     postRequest, cancelRequest, leaveRequest, loadRequests, loadJoins, busy, loaded,
-    openRoomId, setOpenRoomId, setFocusRoomId,
+    openRoomId, setOpenRoomId, setFocusRoomId, showToast,
   } = useSharedRequests();
   const router = useRouter();
   const [panelMode, setPanelMode] = useState<"buttons" | "picker" | "cancel" | "leave">("buttons");
@@ -63,7 +63,11 @@ export default function Index() {
   // closer to Apple Maps' own locate button. iOS ignores the duration; MapKit picks the speed.
   // It replaces any move already in progress, so it also works while the map is still gliding.
   const recenter = () => {
-    if (!userLocation.current) return; // no fix yet (just opened, or GPS still warming up)
+    if (!userLocation.current) {
+      // No fix yet: just opened, GPS warming up indoors, or Location Services off.
+      showToast("Can't find your location right now.");
+      return;
+    }
     // altitude (metres above the map) sets the zoom on Apple Maps; ~1000m shows a few blocks.
     mapRef.current?.animateCamera({ center: userLocation.current, altitude: 1000, heading: 0, pitch: 0 });
     setZoomedOut(false); // our own camera moves don't fire onRegionChangeComplete on iOS, so set it here
@@ -71,7 +75,28 @@ export default function Index() {
 
   // Ask once for "while using the app" permission. Denied = no dot and no recenter button.
   useEffect(() => {
-    Location.requestForegroundPermissionsAsync().then(({ granted }) => setLocationAllowed(granted));
+    // Asks only the first time (when the user hasn't decided yet). After that it just reads the
+    // current setting, on mount and whenever the app comes back to the front, so turning location
+    // on or off in Settings takes effect without restarting the app.
+    const check = async () => {
+      try {
+        let { granted, canAskAgain, status } = await Location.getForegroundPermissionsAsync();
+        if (status === "undetermined" && canAskAgain) {
+          ({ granted } = await Location.requestForegroundPermissionsAsync());
+        }
+        setLocationAllowed(granted);
+        if (!granted) userLocation.current = null; // don't fly to a position from before it was turned off
+      } catch (e) {
+        console.log("location permission check failed", e);
+        setLocationAllowed(false);
+        userLocation.current = null;
+      }
+    };
+    check();
+    const appState = AppState.addEventListener("change", (state) => {
+      if (state === "active") check();
+    });
+    return () => appState.remove();
   }, []);
 
   // Each marker's zIndex when it isn't open: rooms further south draw in front (a pin lower on the
@@ -505,7 +530,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   finishingButton: {
-    backgroundColor: colors.greyLight,   // grey: nothing to do but wait
+    backgroundColor: colors.grey,   // grey: nothing to do but wait (dark enough for white text)
     paddingHorizontal: 16,
   },
   cancelTitle: {
