@@ -1,4 +1,5 @@
 import { describe, expect, it } from "@jest/globals";
+import { formatCampusTime } from "@/lib/campusTime";
 import { dailyTimes, formatCountdown, nextPrayer } from "@/lib/prayerTimes";
 
 const ORDER = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"];
@@ -49,6 +50,54 @@ describe("formatCountdown", () => {
     expect(formatCountdown(500)).toBe("0:01");
     expect(formatCountdown(-1000)).toBe("0:00");
   });
+});
+
+const campusTimes = (at: Date) => dailyTimes(at).map((t) => `${t.name} ${formatCampusTime(t.time)}`);
+
+describe("known times (a regression lock: compare with a Columbus ISNA timetable once)", () => {
+  // Values the library gave when this test was written. If a setting changes by mistake
+  // (madhab, method, coordinates), these move and the test fails.
+  it("Nov 20, 2026", () => {
+    expect(campusTimes(new Date("2026-11-20T17:00:00Z"))).toEqual([
+      "Fajr 6:04 AM", "Shurooq 7:23 AM", "Dhuhr 12:19 PM", "Asr 2:51 PM", "Maghrib 5:12 PM", "Isha 6:31 PM",
+    ]);
+  });
+  it("Jun 30, 2026 (summer: Isha after 10 PM)", () => {
+    expect(campusTimes(new Date("2026-06-30T16:00:00Z"))).toEqual([
+      "Fajr 4:29 AM", "Shurooq 6:07 AM", "Dhuhr 1:37 PM", "Asr 5:34 PM", "Maghrib 9:05 PM", "Isha 10:42 PM",
+    ]);
+  });
+});
+
+describe("nextPrayer around the clock and the calendar", () => {
+  it("a summer evening at 9:30 PM: next is that evening's Isha", () => {
+    const p = nextPrayer(new Date("2026-07-01T01:30:00Z")); // Jun 30, 21:30 ET
+    expect(p.name).toBe("Isha");
+    expect(formatCampusTime(p.time)).toBe("10:42 PM");
+  });
+
+  it("every 30 minutes for a day: always in the future, and never more than a day away", () => {
+    const start = new Date("2026-11-20T05:00:00Z").getTime(); // midnight ET
+    for (let i = 0; i < 48; i++) {
+      const now = new Date(start + i * 30 * 60 * 1000);
+      const p = nextPrayer(now);
+      expect(p.time.getTime()).toBeGreaterThan(now.getTime());
+      expect(p.time.getTime() - now.getTime()).toBeLessThan(24 * 3600 * 1000);
+    }
+  });
+
+  it.each([["Mar 8 (clocks go forward)", "2026-03-08T05:01:00Z"], ["Nov 1 (clocks go back)", "2026-11-01T04:01:00Z"]])(
+    "%s: walks Fajr to Fajr in order", (_label, startIso) => {
+      let now = new Date(startIso); // 00:01 ET
+      const seen: string[] = [];
+      for (let i = 0; i < 6; i++) {
+        const p = nextPrayer(now);
+        expect(p.time.getTime()).toBeGreaterThan(now.getTime());
+        seen.push(p.name);
+        now = p.time;
+      }
+      expect(seen).toEqual([...ORDER, "Fajr"]);
+    });
 });
 
 describe("dailyTimes", () => {

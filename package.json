@@ -58,12 +58,13 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
-    "test": "jest && npm run test:sql",
+    "test": "jest && node scripts/jest/other-time-zones.js && npm run test:sql",
     "test:sql": "node supabase/tests/run-sql-checks.mjs"
   },
   "private": true,
   "jest": {
     "preset": "jest-expo",
+    "globalSetup": "<rootDir>/scripts/jest/global-setup.js",
     "testPathIgnorePatterns": [
       "/node_modules/"
     ]

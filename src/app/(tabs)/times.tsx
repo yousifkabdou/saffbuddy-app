@@ -1,9 +1,10 @@
 import TitlePill, { useTitleSpace } from "@/components/TitlePill";
+import { formatCampusDate, formatCampusTime } from "@/lib/campusTime";
 import { dailyTimes, nextPrayer } from "@/lib/prayerTimes";
 import { colors } from "@/theme";
 import { useBottomTabBarHeight } from "expo-router/js-tabs";
 import { useEffect, useState } from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { AppState, ScrollView, StyleSheet, View } from "react-native";
 import { Text } from "@/components/AppText";
 
 // Today's prayer times (calculated on the phone, see src/lib/prayerTimes.ts), next prayer highlighted.
@@ -11,16 +12,24 @@ export default function Times() {
   const top = useTitleSpace();
   const tabBarHeight = useBottomTabBarHeight();
   // The clock, refreshed every 30s: moves the highlight when a prayer starts,
-  // and rolls the timetable over to the new day after midnight.
+  // and rolls the timetable over to the new day after midnight. Timers pause in the background,
+  // so it's also refreshed when the app comes back (otherwise opening it at Fajr could show
+  // yesterday's timetable for up to 30 seconds).
   const [now, setNow] = useState(new Date());
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 30 * 1000);
-    return () => clearInterval(timer);
+    const appState = AppState.addEventListener("change", (state) => {
+      if (state === "active") setNow(new Date());
+    });
+    return () => {
+      clearInterval(timer);
+      appState.remove();
+    };
   }, []);
 
   const times = dailyTimes(now);
   const next = nextPrayer(now); // after Isha this is tomorrow's Fajr, so nothing today is highlighted
-  const dateLabel = now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
+  const dateLabel = formatCampusDate(now); // campus date, matching the campus timetable
 
   return (
     <View style={styles.screen}>
@@ -35,7 +44,7 @@ export default function Times() {
                 <Text style={[styles.name, isNext && styles.next]}>{t.name}</Text>
                 {isNext && <Text style={styles.nextTag}>Next</Text>}
                 <Text style={[styles.time, isNext && styles.next]}>
-                  {t.time.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                  {formatCampusTime(t.time)}
                 </Text>
               </View>
             );
