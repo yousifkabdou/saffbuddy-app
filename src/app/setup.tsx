@@ -1,8 +1,11 @@
+import { isNetworkError } from "@/lib/errors";
+import { normalizeName, validateName } from "@/lib/name";
+import { isOffline } from "@/lib/network";
 import { supabase } from "@/lib/supabase";
 import { colors } from "@/theme";
 import { router } from "expo-router";
 import { useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import { Text, TextInput } from "@/components/AppText";
 
 
@@ -21,40 +24,56 @@ export default function Setup(){
     const [pickerOpen, setPickerOpen] = useState(false);
     const [nameError, setNameError] = useState("");
 
-    const validateName = (name: string) => {
-      if (name.length < 2 || name.length > 20) return "Name must be 2 to 20 characters";
-      if (!/^[A-Za-z]+([ '’-][A-Za-z]+)*$/.test(name)) return "Name can only contain letters, spaces, hyphens and apostrophes";
-      return "";
-    }
+    // True while the save is on its way: the button shows a spinner and ignores taps, so a slow
+    // network can't send the insert two or three times.
+    const [saving, setSaving] = useState(false);
+
+    const NO_CONNECTION = "No connection. Check your internet and try again.";
 
     const handleSave = async () => {
-    setErrorState(false);
-      const error = validateName(firstName.trim());
-      const {data} = await supabase.auth.getSession();
-      const userID = data.session?.user.id;
+      if (saving) return;
+      setErrorState(false);
+      const name = normalizeName(firstName);
+      const error = validateName(name); // same rule as the database (src/lib/name.ts)
       setNameError(error);
-      if (error){
-        return
-      }
-       const {error:insertError} = await supabase.from("profiles")
-       .insert({id : userID, first_name: firstName.trim(), gender: gender});
+      if (error) return;
 
-       if (insertError){
-        if (insertError.code === '23505'){
-        // A profile already exists (primary key clash), so there's nothing to set up: go home.
+      setSaving(true);
+      try {
+        if (await isOffline()) {
+          setErrorState(NO_CONNECTION);
+          return;
+        }
+        const {data} = await supabase.auth.getSession();
+        const userID = data.session?.user.id;
+        if (!userID) {
+          // No session (signed out elsewhere, or it couldn't be refreshed): saving would be
+          // refused anyway, so go back to login instead of showing a confusing error.
+          router.replace("/login");
+          return;
+        }
+        const {error:insertError} = await supabase.from("profiles")
+          .insert({id : userID, first_name: name, gender: gender});
+
+        if (insertError){
+          console.log(insertError.message);
+          if (insertError.code === '23505'){
+            // A profile already exists (primary key clash), so there's nothing to set up: go home.
+            router.replace("/");
+            return;
+          }
+          if (insertError.code === '23514'){
+            setErrorState("Please check your name and try again");
+            return;
+          }
+          // No raw error codes: they mean nothing to the user.
+          setErrorState(isNetworkError(insertError) ? NO_CONNECTION : "Something went wrong. Try again.");
+          return;
+        }
         router.replace("/");
-        return;
-        }
-        if (insertError.code === '23514'){
-        setErrorState("Please check your name and try again");
-        return;
-        }
-        else{
-        setErrorState(`Something went wrong please try again. Error code: ${insertError.code}`);
-        return;
-        }
-       }
-       router.replace("/");
+      } finally {
+        setSaving(false);
+      }
     }
 
     const selectedLabel = genderOptions.find(o => o.value === gender)?.label;
@@ -87,8 +106,10 @@ export default function Setup(){
         <Text style={styles.note}>This can’t be changed later</Text>
 
         {/* Disabled (and faded) until a gender is picked, same as before. */}
-        <Pressable style={[styles.saveButton, !gender && styles.saveDisabled]} onPress={handleSave} disabled={!gender}>
-          <Text style={styles.saveText}>Save</Text>
+        <Pressable style={[styles.saveButton, (!gender || saving) && styles.saveDisabled]} onPress={handleSave} disabled={!gender || saving}>
+          {saving
+            ? <ActivityIndicator color={colors.paper} />
+            : <Text style={styles.saveText}>Save</Text>}
         </Pressable>
         {nameError && <Text style={styles.error}>{nameError}</Text>}
          {errorState && <Text style={styles.error}>{errorState}</Text>}

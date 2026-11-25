@@ -27,9 +27,14 @@ export default function ProfileScreen() {
   // Load once on open. RLS only returns the user's own row; .eq makes that explicit.
   useEffect(() => {
     const load = async () => {
-      const { data: sessionData } = await supabase.auth.getSession();
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       const user = sessionData.session?.user;
-      if (!user) return;
+      if (sessionError || !user) {
+        // Without this the spinner never stopped (e.g. offline with an expired token).
+        console.log(sessionError?.message ?? "no session");
+        setFailed(true);
+        return;
+      }
       setEmail(user.email ?? "");
       const { data, error } = await supabase.from("profiles").select("first_name, gender").eq("id", user.id).maybeSingle();
       if (error || !data) {
@@ -68,12 +73,14 @@ export default function ProfileScreen() {
       );
       return;
     }
-    // The account and its server sessions are already gone, so only clear the login saved on
-    // this phone ("local"); asking the server to sign out a deleted user would just fail.
-    await supabase.auth.signOut({ scope: "local" });
-    // This screen sits on top of the tabs: close it and the tabs, then show login.
+    // Navigate first, then sign out. This screen sits on top of the tabs: closing both unmounts the
+    // tabs layout and its auth listener, so only this code navigates. (Signing out first made the
+    // layout redirect to login too, which could stack two login screens.)
     router.dismissAll();
     router.replace("/login");
+    // Clears the login saved on this phone. scope "local" still calls the server's logout, which
+    // fails now that the user is gone; signOut ignores that failure and clears the phone anyway.
+    await supabase.auth.signOut({ scope: "local" });
   };
 
   return (
