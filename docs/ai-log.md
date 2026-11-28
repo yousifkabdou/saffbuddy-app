@@ -24,3 +24,5 @@ Times Claude's code or review was wrong, and how it was caught.
   Caught by the rule's own tests (the "allows destructuring error" case failed). Fixed by making the braces the subject, so only a one-step `:has(> Property)` is needed.
 - **2026-11-25:** Claude's `is_osu_email` used `like '%@osu.edu'`, which only checks the ending, so `x@evil.com@osu.edu` passed the sign-up check.
   Caught by the overnight edge-case SQL test O31. Fixed with an anchored regex `^[^@\s]+@osu\.edu$`, the same rule the app already used.
+- **2026-11-27:** Claude's welcome-screen change routed setup's successful save to Welcome but kept `setSaving(false)` in `finally`, so the Save button re-enabled while the screen animated away; a quick second tap got "already exists" and replaced Welcome with the map.
+  Caught by the /code-review standards sub-agent. Fixed by keeping the button disabled once setup navigates away, the same pattern login.tsx uses.

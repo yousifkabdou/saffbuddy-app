@@ -1,6 +1,7 @@
 import { normalizeName, validateName } from "@/lib/name";
 import { isOffline } from "@/lib/network";
-import { NO_CONNECTION, setupOutcome } from "@/lib/setupOutcome";
+import { NO_CONNECTION } from "@/lib/errors";
+import { setupOutcome } from "@/lib/setupOutcome";
 import { supabase } from "@/lib/supabase";
 import { colors } from "@/theme";
 import { router } from "expo-router";
@@ -37,6 +38,10 @@ export default function Setup(){
       if (error) return;
 
       setSaving(true);
+      // Set just before navigating away. The button then stays disabled while the screen
+      // animates out: re-enabling it let a quick second tap insert again, get "already
+      // exists", and replace Welcome with the map. (login.tsx does the same.)
+      let leaving = false;
       try {
         if (await isOffline()) {
           setErrorState(NO_CONNECTION);
@@ -47,6 +52,7 @@ export default function Setup(){
         if (!userID) {
           // No session (signed out elsewhere, or it couldn't be refreshed): saving would be
           // refused anyway, so go back to login instead of showing a confusing error.
+          leaving = true;
           router.replace("/login");
           return;
         }
@@ -60,9 +66,10 @@ export default function Setup(){
           setErrorState(outcome.error);
           return;
         }
+        leaving = true;
         router.replace(outcome.go === "welcome" ? "/welcome" : "/");
       } finally {
-        setSaving(false);
+        if (!leaving) setSaving(false);
       }
     }
 

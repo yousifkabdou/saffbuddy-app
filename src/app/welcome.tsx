@@ -9,7 +9,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 // Shown once, right after a new user saves their profile (setup goes here only when it just
 // created the profile; see src/lib/setupOutcome.ts). Nothing is saved to remember it was seen:
-// no other screen links here, so it can't come back.
+// no screen links here, so it only comes back if someone opens the /welcome link directly.
+// That's harmless: it's static text, and "Get started" goes through the tabs layout's
+// sign-in and profile checks like any other entry.
 export default function Welcome() {
   const insets = useSafeAreaInsets();
 
