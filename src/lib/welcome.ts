@@ -11,15 +11,15 @@ export type WelcomeStep = { title: string; body: string };
 export const WELCOME_STEPS: WelcomeStep[] = [
   {
     title: "Pick a prayer room",
-    body: "Tap a pin on the map to see the room and get walking directions.",
+    body: "Tap a pin on the map to see the room and get walking directions",
   },
   {
     title: "Start or join a request",
-    body: `Post a request for a prayer starting in ${earliest}–${latest} minutes, or join one someone else posted.`,
+    body: `Post a request for a prayer starting in ${earliest}–${latest} minutes, or join one someone else posted`,
   },
   {
     title: "Show up and pray",
-    body: "Head to the room by the start time. Requests disappear on their own shortly after.",
+    body: "Head to the room by the start time. Requests disappear on their own shortly after",
   },
 ];
 
