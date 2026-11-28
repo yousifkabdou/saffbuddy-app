@@ -4,18 +4,13 @@ import { colors } from "@/theme";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { GlassView } from "expo-glass-effect";
 import { useRouter } from "expo-router";
-import * as WebBrowser from "expo-web-browser";
+import { openLegalPage, PRIVACY_POLICY_URL, TERMS_URL } from "@/lib/legal";
 import { useEffect, useState } from "react";
 import { Animated, BackHandler, Dimensions, Pressable, StyleSheet, View } from "react-native";
 import { Text } from "@/components/AppText";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const MENU_WIDTH = Math.min(300, Dimensions.get("window").width * 0.8);
-
-// The published privacy policy. It's served by Cloudflare from the saffbuddy-site repo
-// (public/privacy.html); docs/privacy-policy.md here is the draft it was made from.
-// The App Store Connect listing needs the same URL.
-const PRIVACY_POLICY_URL = "https://saffbuddy.app/privacy";
 
 // Menu button (top left, on every tab) + the side menu it opens: Profile at the top, Sign Out at the bottom.
 // Rendered once in the tabs layout, above the screens.
@@ -60,11 +55,12 @@ export default function SideMenu() {
 
   const openPrivacyPolicy = () => {
     setOpen(false);
-    // Opens in an in-app browser sheet, so the user stays in SaffBuddy.
-    WebBrowser.openBrowserAsync(PRIVACY_POLICY_URL).catch((e) => {
-      console.log("couldn't open the privacy policy", e);
-      showToast("Couldn't open the privacy policy. Try again.");
-    });
+    openLegalPage(PRIVACY_POLICY_URL, () => showToast("Couldn't open the privacy policy. Try again."));
+  };
+
+  const openTerms = () => {
+    setOpen(false);
+    openLegalPage(TERMS_URL, () => showToast("Couldn't open the terms of use. Try again."));
   };
 
   const goToProfile = () => {
@@ -109,6 +105,11 @@ export default function SideMenu() {
           <Pressable style={styles.item} onPress={openPrivacyPolicy} accessibilityRole="link">
             <Ionicons name="shield-checkmark-outline" size={24} color={colors.ink} />
             <Text style={styles.itemText}>Privacy Policy</Text>
+          </Pressable>
+
+          <Pressable style={styles.item} onPress={openTerms} accessibilityRole="link">
+            <Ionicons name="document-text-outline" size={24} color={colors.ink} />
+            <Text style={styles.itemText}>Terms of Use</Text>
           </Pressable>
 
           {/* Pushed to the bottom by marginTop: "auto". */}

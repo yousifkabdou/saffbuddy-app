@@ -3,7 +3,8 @@ import { colors } from "@/theme";
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import MarkerPin from "@/components/MarkerPin";
-import { ActivityIndicator, KeyboardAvoidingView, Pressable, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Pressable, StyleSheet, View } from "react-native";
+import { openLegalPage, PRIVACY_POLICY_URL, TERMS_URL } from "@/lib/legal";
 import { Text, TextInput } from "@/components/AppText";
 import {
   isOsuEmail, isReviewEmail, isSixDigitCode, OSU_ONLY, passwordErrorMessage, RESEND_COOLDOWN_SECONDS,
@@ -195,6 +196,23 @@ const handleVerify = async() => {
               : <Text style={styles.buttonText}>Verify</Text>}
           </Pressable>
           </>}
+
+          {/* Agreement notice. It sits right under the buttons and is on screen before every one of
+              them is tapped (Continue, Sign in, Verify), with both documents a tap away: terms the
+              user is clearly shown before acting are much more likely to hold up than a link
+              buried in a menu. */}
+          <Text style={styles.agreement}>
+            By continuing, you agree to SaffBuddy&apos;s{" "}
+            <Text style={styles.agreementLink} accessibilityRole="link"
+              onPress={() => openLegalPage(TERMS_URL, () => Alert.alert("Terms of Use", `Couldn't open the page. It's at ${TERMS_URL}`))}>
+              Terms of Use
+            </Text>
+            {" "}and{" "}
+            <Text style={styles.agreementLink} accessibilityRole="link"
+              onPress={() => openLegalPage(PRIVACY_POLICY_URL, () => Alert.alert("Privacy Policy", `Couldn't open the page. It's at ${PRIVACY_POLICY_URL}`))}>
+              Privacy Policy
+            </Text>.
+          </Text>
         </View>
 
         <Text style={styles.footer}>
@@ -290,6 +308,18 @@ const styles = StyleSheet.create({
     color: colors.scarlet,
     fontSize: 13,
     marginTop: 6,
+  },
+  agreement: {
+    color: colors.grey,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 14,
+    textAlign: "center",
+  },
+  agreementLink: {
+    color: colors.scarlet,
+    fontWeight: "600",
+    textDecorationLine: "underline",
   },
   footer: {
     color: colors.grey,
