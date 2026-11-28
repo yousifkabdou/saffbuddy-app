@@ -1,6 +1,7 @@
-import { isNetworkError } from "@/lib/errors";
 import { normalizeName, validateName } from "@/lib/name";
 import { isOffline } from "@/lib/network";
+import { NO_CONNECTION } from "@/lib/errors";
+import { setupOutcome } from "@/lib/setupOutcome";
 import { supabase } from "@/lib/supabase";
 import { colors } from "@/theme";
 import { router } from "expo-router";
@@ -28,8 +29,6 @@ export default function Setup(){
     // network can't send the insert two or three times.
     const [saving, setSaving] = useState(false);
 
-    const NO_CONNECTION = "No connection. Check your internet and try again.";
-
     const handleSave = async () => {
       if (saving) return;
       setErrorState(false);
@@ -39,6 +38,10 @@ export default function Setup(){
       if (error) return;
 
       setSaving(true);
+      // Set just before navigating away. The button then stays disabled while the screen
+      // animates out: re-enabling it let a quick second tap insert again, get "already
+      // exists", and replace Welcome with the map. (login.tsx does the same.)
+      let leaving = false;
       try {
         if (await isOffline()) {
           setErrorState(NO_CONNECTION);
@@ -49,30 +52,24 @@ export default function Setup(){
         if (!userID) {
           // No session (signed out elsewhere, or it couldn't be refreshed): saving would be
           // refused anyway, so go back to login instead of showing a confusing error.
+          leaving = true;
           router.replace("/login");
           return;
         }
         const {error:insertError} = await supabase.from("profiles")
           .insert({id : userID, first_name: name, gender: gender});
+        if (insertError) console.log(insertError.message);
 
-        if (insertError){
-          console.log(insertError.message);
-          if (insertError.code === '23505'){
-            // A profile already exists (primary key clash), so there's nothing to set up: go home.
-            router.replace("/");
-            return;
-          }
-          if (insertError.code === '23514'){
-            setErrorState("Please check your name and try again");
-            return;
-          }
-          // No raw error codes: they mean nothing to the user.
-          setErrorState(isNetworkError(insertError) ? NO_CONNECTION : "Something went wrong. Try again.");
+        // New profile -> welcome screen; one that already existed -> home; otherwise a message.
+        const outcome = setupOutcome(insertError);
+        if ("error" in outcome) {
+          setErrorState(outcome.error);
           return;
         }
-        router.replace("/");
+        leaving = true;
+        router.replace(outcome.go === "welcome" ? "/welcome" : "/");
       } finally {
-        setSaving(false);
+        if (!leaving) setSaving(false);
       }
     }
 

@@ -9,12 +9,12 @@ export type RequestAction = "post" | "join" | "leave" | "cancel";
 export type AppError = { code?: string; message: string };
 
 // Postgres error codes we expect from the requests/joiners rules.
-const UNIQUE_VIOLATION = "23505";      // a unique/primary key already exists (one request / one join per user)
+export const UNIQUE_VIOLATION = "23505";     // a unique/primary key already exists (one request / one join per user)
 const FOREIGN_KEY_VIOLATION = "23503"; // the row it points at is gone (request cancelled or expired)
 const RLS_REFUSED = "42501";           // a row-level security policy said no
 // The one-role triggers (supabase/joins.sql) raise this when the user is already in the other
 // table: a request while joined, or a join while holding a request.
-const CHECK_VIOLATION = "23514";
+export const CHECK_VIOLATION = "23514";
 
 // Not from Postgres: the app sets this when a delete succeeds but removes zero rows.
 // Supabase doesn't treat that as an error, so without it a refused or stale Leave/Cancel looks like it worked.
@@ -34,7 +34,7 @@ export function isNetworkError(error: AppError) {
   return !error.code && /network|fetch|timed? ?out|offline|abort/i.test(error.message);
 }
 
-const NO_CONNECTION = "No connection. Check your internet and try again.";
+export const NO_CONNECTION = "No connection. Check your internet and try again.";
 
 export function actionErrorMessage(action: RequestAction, error: AppError): string {
   if (isNetworkError(error)) return NO_CONNECTION;
